@@ -83,7 +83,6 @@ function check_configs_for_release(){
 
 
 function check_configs(){
-
     grails_executable=$(which grails)
     gradle_executable=$(which gradle)
     git_executable=$(which git)
@@ -113,7 +112,6 @@ function check_configs(){
        echo "You must install 'git' to install Apollo."
        exit 1 ;
     fi
-
 }
 
 function copy_configs(){
@@ -121,13 +119,17 @@ function copy_configs(){
     cp apollo-config.groovy src/java/apollo-config.groovy
 }
 
-
+function run_watchman(){
+    if [ -x "$watchman_executable" ]; then
+        $watchman_executable -- trigger $(PWD) jsfilescopy 'client/apollo/**/*.js' -- scripts/copy_client.sh;
+    fi;
+}
 
 if [[ $1 == "devmode" ]];then
     check_configs
     $gradle_executable handleJBrowse devmode &
     $grails_executable -reloading run-app
-    if [ -x "$watchman_executable" ]; then $watchman_executable -- trigger $(PWD) jsfilescopy 'client/apollo/**/*.js' -- scripts/copy_client.sh; fi;
+    run_watchman
 elif [[ $1 == "run-local" ]];then
     check_configs
     if [[ $# == 2 ]]; then
@@ -135,26 +137,26 @@ elif [[ $1 == "run-local" ]];then
     else
         $gradle_executable handleJBrowse copy-resources gwtc && $grails_executable run-app
     fi
-    if [ -x "$watchman_executable" ]; then $watchman_executable -- trigger $(PWD) jsfilescopy 'client/apollo/**/*.js' -- scripts/copy_client.sh; fi;
+    run_watchman
 elif [[ $1 == "run-app" ]];then
     check_configs
+
     if [[ $# == 2 ]]; then
-        $gradle_executable handleJBrowse copy-resources && $grails_executable -Dserver.port=$2 run-app
+        args="-Dserver.port=$2"
     else
-        $gradle_executable handleJBrowse copy-resources && $grails_executable run-app
+        args=""
     fi
-    if [ -x "$watchman_executable" ]; then $watchman_executable -- trigger $(PWD) jsfilescopy 'client/apollo/**/*.js' -- scripts/copy_client.sh; fi;
+
+    $gradle_executable handleJBrowse copy-resources && $grails_executable $args run-app
+    run_watchman
 elif [[ $1 == "debug" ]];then
     # TODO: feel like there is a better way to do this
-    OLD_MAVEN_OPTS=$MAVEN_OPTS
     check_configs
     copy_configs
-    export MAVEN_OPTS=-agentlib:jdwp=transport=dt_socket,address=5005,server=y,suspend=n
-    $gradle_executable handleJBrowse devmode &
-    $grails_executable -reloading debug
-    export MAVEN_OPTS=$OLD_MAVEN_OPTS
-    unset OLD_MAVEN_OPTS
-    if [ -x "$watchman_executable" ]; then $watchman_executable -- trigger $(PWD) jsfilescopy 'client/apollo/**/*.js' -- scripts/copy_client.sh; fi;
+    MAVEN_OPTS=-agentlib:jdwp=transport=dt_socket,address=5005,server=y,suspend=n
+    $MAVEN_OPTS $gradle_executable handleJBrowse devmode &
+    $MAVEN_OPTS $grails_executable -reloading debug
+    run_watchman
 elif [[ $1 == "test" ]];then
     check_configs
     copy_configs
@@ -198,4 +200,3 @@ elif [[ $1 == "jbrowse" ]];then
 else
     usage
 fi
-
