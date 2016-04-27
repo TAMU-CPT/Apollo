@@ -12,10 +12,8 @@ class DbRealm {
     def credentialMatcher
     def shiroPermissionResolver
 
-    def authenticate(authToken) {
-        log.info "Attempting to authenticate ${authToken.username} in DB realm..."
+    def usernamePasswordAuth(authToken) {
         def username = authToken.username
-
         // Null username is invalid
         if (username == null) {
             throw new AccountException("Null usernames are not allowed by this realm.")
@@ -38,6 +36,42 @@ class DbRealm {
             log.info "Invalid password (DB realm)"
             throw new IncorrectCredentialsException("Invalid password for user '${username}'")
         }
+        return account
+    }
+
+    def apikeyAuth(authToken) {
+        def apikey = authToken.apikey
+        // Null username is invalid
+        if (apikey == null) {
+            throw new AccountException("Null API keys are not allowed by this realm.")
+        }
+
+        // Get the user with the given username. If the user is not
+        // found, then they don't have an account and we throw an
+        // exception.
+        def user = User.findByApikey(apikey)
+        if (!user) {
+            throw new UnknownAccountException("No account found for user [${username}]")
+        }
+
+        log.info "Found user '${user.username}' in DB"
+        return account
+    }
+
+    def authenticate(authToken) {
+        log.info "Attempting to authenticate ${authToken.username} in DB realm..."
+
+//        try {
+            account = usernamePasswordAuth(authToken)
+//        } catch ( passwordAuthEx ) {
+//            try {
+//                account = apikeyAuth(authToken)
+//            } catch( apiAuthEx ) {
+//                // This masks any apiAuth exceptions, which is sub-optimal, but
+//                // we need to try both, and can't return exceptions from both
+//                throw passwordAuthEx
+//            }
+//        }
 
         return account
     }

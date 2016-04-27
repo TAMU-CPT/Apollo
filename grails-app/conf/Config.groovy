@@ -172,8 +172,8 @@ log4j.main = {
     // more find grained logging
     //trace 'org.hibernate.type'
     //debug 'org.hibernate.SQL'
-    //debug 'grails.app'
-    //debug 'grails.app.controllers.org.bbop.apollo'
+    debug 'grails.app'
+    debug 'grails.app.controllers.org.bbop.apollo'
     //debug 'grails.app.controllers.org.bbop.apollo.JbrowseController'
     //debug 'grails.app.services.org.bbop.apollo.FeatureService'
     info 'grails.app.controllers.org.bbop.apollo.GroupController'
