@@ -161,6 +161,11 @@ class PreferenceService {
             if (!userOrganismPreference) {
                 // find a random organism based on sequence
                 Sequence sequence = Sequence.findByName(trackName)
+                // On first run of apollo, sequence is null as there are no
+                // orgs. Return to avoid generating a spurious NPE
+                if(!sequence){
+                    return null
+                }
                 Organism organism  = sequence.organism
 
                 userOrganismPreference = new UserOrganismPreference(

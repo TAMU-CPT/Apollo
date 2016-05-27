@@ -234,6 +234,12 @@ class AnnotatorController {
             }
 
             Sequence sequenceObj = permissionService.checkPermissions(returnObject, PermissionEnum.READ)
+            // On first run of apollo, sequence is null as there are no
+            // orgs. Return to avoid generating a spurious NPE
+            if(!sequenceObj){
+                render returnObject
+                return
+            }
             Organism organism = sequenceObj.organism
             Integer index = Integer.parseInt(request)
 
