@@ -52,9 +52,9 @@
             margin-top: 5px;
             margin-left: 10px;
         }
-    
+
     </ui:style>
-    <gwt:DockLayoutPanel>
+    <gwt:SplitLayoutPanel>
         <gwt:north size="60">
             <b:Container fluid="true" styleName="{style.northPanel}">
                 <b:Row>
@@ -176,5 +176,5 @@
             </gwt:TabLayoutPanel>
         </gwt:south>
 
-    </gwt:DockLayoutPanel>
+    </gwt:SplitLayoutPanel>
 </ui:UiBinder>

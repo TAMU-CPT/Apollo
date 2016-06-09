@@ -31,7 +31,7 @@
         }
 
     </ui:style>
-    <gwt:DockLayoutPanel>
+    <gwt:SplitLayoutPanel>
         <gwt:center>
             <gwt:DockLayoutPanel>
                 <gwt:north size="25">
@@ -101,5 +101,5 @@
             </gwt:TabLayoutPanel>
         </gwt:south>
 
-    </gwt:DockLayoutPanel>
+    </gwt:SplitLayoutPanel>
 </ui:UiBinder>

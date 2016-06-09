@@ -172,6 +172,10 @@
                             <gwt:header>Admin</gwt:header>
                             <apollo:PreferencePanel ui:field="preferencePanel" visible="false"/>
                         </gwt:tab>
+                        <gwt:tab>
+                            <gwt:header>Sharing</gwt:header>
+                            <apollo:SharingPanel ui:field="sharingPanel"/>
+                        </gwt:tab>
                     </gwt:TabLayoutPanel>
                 </gwt:center>
             </gwt:DockLayoutPanel>
