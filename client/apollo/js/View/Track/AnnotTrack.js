@@ -4504,6 +4504,12 @@ define([
                         }
                     }));
                     changeAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "pRNA",
+                        onClick: function(event) {
+                            thisB.changeAnnotationType("pRNA");
+                        }
+                    }));
+                    changeAnnotationMenu.addChild(new dijitMenuItem( {
                         label: "miRNA",
                         onClick: function(event) {
                             thisB.changeAnnotationType("miRNA");

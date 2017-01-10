@@ -729,6 +729,25 @@ div.track_webapollo_view_track_annotsequencetrack div.track-label .track-close-b
     background-color: magenta;
 }
 
+.terminator_element,
+.plus-terminator_element, 
+.minus-terminator_element {
+	height: 12px;
+	border-left-color: black;
+	border-right-color: black;
+	border-width: 0px 2px 0px 2px;
+	border-style: solid;
+	background-color: transparent;
+	z-index: 10;
+}
+
+.terminator_element-render {
+    height: 3px;
+    margin-top: 4px;
+    background-color: black;
+}
+
+
 .transposable_element,
 .plus-transposable_element, 
 .minus-transposable_element {
@@ -745,6 +764,22 @@ div.track_webapollo_view_track_annotsequencetrack div.track-label .track-close-b
     height: 3px;
     margin-top: 4px;
     background-color: blue;
+}
+
+.black-ibeam {
+	height: 12px;
+	border-left-color: black;
+	border-right-color: black;
+	border-width: 0px 2px 0px 2px;
+	border-style: solid;
+	background-color: transparent;
+	z-index: 10;
+}
+
+.black-ibeam-render {
+	height: 3px;
+    margin-top: 4px;
+    background-color: black;
 }
 
 .blue-ibeam {

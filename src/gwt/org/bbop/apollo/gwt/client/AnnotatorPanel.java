@@ -354,6 +354,7 @@ public class AnnotatorPanel extends Composite {
         typeList.addItem("Pseudogene");
         typeList.addItem("Transposable Element", "transposable_element");
         typeList.addItem("Repeat Region", "repeat_region");
+        typeList.addItem("Terminator", "terminator");
     }
 
     private static void updateAnnotationInfo(AnnotationInfo annotationInfo) {
@@ -365,6 +366,7 @@ public class AnnotatorPanel extends Composite {
         switch (type) {
             case "gene":
             case "pseudogene":
+            case "terminator":
                 geneDetailPanel.updateData(annotationInfo);
                 tabPanel.getTabWidget(1).getParent().setVisible(false);
                 tabPanel.selectTab(0);
@@ -380,6 +382,7 @@ public class AnnotatorPanel extends Composite {
             case "snRNA":
             case "snoRNA":
             case "ncRNA":
+            case "pRNA":
                 transcriptDetailPanel.updateData(annotationInfo);
                 tabPanel.getTabWidget(1).getParent().setVisible(true);
                 exonDetailPanel.updateData(annotationInfo);

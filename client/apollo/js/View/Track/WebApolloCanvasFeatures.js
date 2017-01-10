@@ -92,6 +92,13 @@ return declare( CanvasFeaturesTrack,
                    }
                 },
                 {
+                  "label" : "pRNA",
+                  "action" : function() {
+                     var atrack=thisB.webapollo.getAnnotTrack();
+                     atrack.createGenericAnnotations([this.feature], "ncRNA", null, "gene");
+                   }
+                },
+                {
                   "label" : "rRNA",
                   "action" : function() {
                      var atrack=thisB.webapollo.getAnnotTrack();
@@ -117,6 +124,13 @@ return declare( CanvasFeaturesTrack,
                   "action" : function() {
                      var atrack=thisB.webapollo.getAnnotTrack();
                      atrack.createGenericOneLevelAnnotations([this.feature], "transposable_element", true);
+                   }
+                },
+                {
+                  "label" : "terminator",
+                  "action" : function() {
+                     var atrack=thisB.webapollo.getAnnotTrack();
+                     atrack.createGenericOneLevelAnnotations([this.feature], "terminator", true);
                    }
                 }
               ]

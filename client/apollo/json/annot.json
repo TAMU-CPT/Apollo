@@ -26,6 +26,10 @@
                   "renderClassName" : "blue-ibeam-render",
                   "className" : "blue-ibeam"
                },
+               "transposable_element" : {
+                  "renderClassName" : "black-ibeam-render",
+                  "className" : "black-ibeam"
+               },
                "pseudogene" : {
                   "renderClassName" : "gray-center-30pct",
                   "className" : "light-purple-80pct"
