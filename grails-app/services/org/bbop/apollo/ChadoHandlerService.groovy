@@ -137,7 +137,7 @@ class ChadoHandlerService {
      */
     def createChadoFeaturesForAnnotation(org.bbop.apollo.Organism organism, org.bbop.apollo.Feature topLevelFeature) {
         /*
-        Top-level features are gene, pseudogene, transposable_element, repeat_region, insertion, deletion, substitution.
+        Top-level features are gene, pseudogene, transposable_element, repeat_region, insertion, deletion, substitution, terminator.
         A top-level feature that is not an instance of type Gene is likely to be a singleton feature.
          */
         org.gmod.chado.Feature topLevelChadoFeature = getChadoFeature(topLevelFeature.uniqueName)
