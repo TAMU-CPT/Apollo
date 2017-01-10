@@ -2030,11 +2030,11 @@ define([
                     dojo.place(parentContent, content);
                     ++numItems;
                 }
-                var annotContent = this.createAnnotationInfoEditorPanelForFeature(annot.id(), track.getUniqueTrackName(), selector, false);
-                dojo.attr(annotContent, "class", "annotation_info_editor");
-                dojo.attr(annotContent, "id", "child_annotation_info_editor");
-                dojo.place(annotContent, content);
-                ++numItems;
+                //var annotContent = this.createAnnotationInfoEditorPanelForFeature(annot.id(), track.getUniqueTrackName(), selector, false);
+                //dojo.attr(annotContent, "class", "annotation_info_editor");
+                //dojo.attr(annotContent, "id", "child_annotation_info_editor");
+                //dojo.place(annotContent, content);
+                //++numItems;
                 dojo.attr(content, "style", "width:" + (numItems == 1 ? "28" : "58") + "em;");
                 track.openDialog("Information Editor", content);
                 AnnotTrack.popupDialog.resize();
