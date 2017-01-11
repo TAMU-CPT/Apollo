@@ -2025,12 +2025,12 @@ define([
                 var numItems = 0;
                 // if annotation has parent, get comments for parent
                 if (annot.afeature.parent_id) {
-                    var parentContent = this.createAnnotationInfoEditorPanelForFeature(annot.afeature.parent_id, track.getUniqueTrackName());
+                    var parentContent = this.createAnnotationInfoEditorPanelForFeature(annot.afeature.parent_id, annot.id(), track.getUniqueTrackName());
                     dojo.attr(parentContent, "class", "parent_annotation_info_editor");
                     dojo.place(parentContent, content);
                     ++numItems;
                 } else {
-                    var annotContent = this.createAnnotationInfoEditorPanelForFeature(annot.id(), track.getUniqueTrackName(), selector, false);
+                    var annotContent = this.createAnnotationInfoEditorPanelForFeature(annot.id(), null, track.getUniqueTrackName(), selector, false);
                     dojo.attr(annotContent, "class", "annotation_info_editor");
                     dojo.attr(annotContent, "id", "child_annotation_info_editor");
                     dojo.place(annotContent, content);
@@ -2069,9 +2069,11 @@ define([
             },
 
 
-            createAnnotationInfoEditorPanelForFeature: function (uniqueName, trackName, selector, reload) {
+            createAnnotationInfoEditorPanelForFeature: function (uniqueName, childUniqueName, trackName, selector, reload) {
                 var track = this;
                 var feature = this.store.getFeatureById(uniqueName);
+                var child = this.store.getFeatureById(childUniqueName);
+
                 var hasWritePermission = this.canEdit(this.store.getFeatureById(uniqueName));
                 var content = dojo.create("span");
 
@@ -2411,8 +2413,12 @@ define([
                         var newName = nameField.get("value");
                         if (oldName != newName) {
                             updateName(newName);
+                            updateName(newName, childUniqueName);
                             if (selector) {
                                 var select = selector.store.get(feature.uniquename).then(function (select) {
+                                    selector.store.setValue(select, "label", newName);
+                                });
+                                var select2 = selector.store.get(childUniqueName).then(function (select) {
                                     selector.store.setValue(select, "label", newName);
                                 });
                             }
@@ -3069,13 +3075,22 @@ define([
                     dateLastModifiedField.set("value", FormatUtils.formatDate(date.getTime()));
                 }
 
-                var updateName = function (name) {
-                    name = escapeString(name);
-                    var features = '"features": [ { "uniquename": "' + uniqueName + '", "name": "' + name + '" } ]';
-                    var operation = "set_name";
-                    var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
-                    track.executeUpdateOperation(postData);
-                    updateTimeLastUpdated();
+                var updateName = function (name, uniquename) {
+                    if(uniquename){
+                        name = escapeString(name);
+                        var features = '"features": [ { "uniquename": "' + uniquename + '", "name": "' + name + '" } ]';
+                        var operation = "set_name";
+                        var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
+                        track.executeUpdateOperation(postData);
+                        updateTimeLastUpdated();
+                    } else {
+                        name = escapeString(name);
+                        var features = '"features": [ { "uniquename": "' + uniqueName + '", "name": "' + name + '" } ]';
+                        var operation = "set_name";
+                        var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
+                        track.executeUpdateOperation(postData);
+                        updateTimeLastUpdated();
+                    }
                 };
 
                 var updateSymbol = function (symbol) {
