@@ -1992,10 +1992,10 @@ define([
                 var content = dojo.create("div", {'class': "annotation_info_editor_container"});
                 if (annot.afeature.parent_id) {
                     var selectorDiv = dojo.create("div", {'class': "annotation_info_editor_selector"}, content);
-                    var selectorLabel = dojo.create("label", {
-                        innerHTML: "Select " + annot.get("type"),
-                        'class': "annotation_info_editor_selector_label"
-                    }, selectorDiv);
+                    //var selectorLabel = dojo.create("label", {
+                        //innerHTML: "Select " + annot.get("type"),
+                        //'class': "annotation_info_editor_selector_label"
+                    //}, selectorDiv);
                     var data = [];
                     var feats = track.topLevelParents[annot.afeature.parent_id];
                     for (var i in feats) {
@@ -2007,9 +2007,9 @@ define([
                     });
                     var os = new ObjectStore({objectStore: store});
                     var selector = new Select({store: os});
-                    selector.placeAt(selectorDiv);
-                    selector.attr("value", annot.afeature.uniquename);
-                    selector.attr("style", "width: 50%;");
+                    //selector.placeAt(selectorDiv);
+                    //selector.attr("value", annot.afeature.uniquename);
+                    //selector.attr("style", "width: 50%;");
                     var first = true;
                     dojo.connect(selector, "onChange", function (id) {
                         if (!first) {
@@ -2029,12 +2029,13 @@ define([
                     dojo.attr(parentContent, "class", "parent_annotation_info_editor");
                     dojo.place(parentContent, content);
                     ++numItems;
+                } else {
+                    var annotContent = this.createAnnotationInfoEditorPanelForFeature(annot.id(), track.getUniqueTrackName(), selector, false);
+                    dojo.attr(annotContent, "class", "annotation_info_editor");
+                    dojo.attr(annotContent, "id", "child_annotation_info_editor");
+                    dojo.place(annotContent, content);
+                    ++numItems;
                 }
-                //var annotContent = this.createAnnotationInfoEditorPanelForFeature(annot.id(), track.getUniqueTrackName(), selector, false);
-                //dojo.attr(annotContent, "class", "annotation_info_editor");
-                //dojo.attr(annotContent, "id", "child_annotation_info_editor");
-                //dojo.place(annotContent, content);
-                //++numItems;
                 dojo.attr(content, "style", "width:" + (numItems == 1 ? "28" : "58") + "em;");
                 track.openDialog("Information Editor", content);
                 AnnotTrack.popupDialog.resize();
@@ -4337,7 +4338,7 @@ define([
             },
 
             showAnnotatorPanel: function(){
-                // http://asdfasfasdf/asfsdf/asdfasdf/apollo/<organism ID / client token>/jbrowse/index.html?loc=Group9.10%3A501752..501878&highlight=&tracklist=1&tracks=DNA%2CAnnotations&nav=1&overview=1
+                // http://example.com/some/path/apollo/<organism ID / client token>/jbrowse/index.html?loc=Group9.10%3A501752..501878&highlight=&tracklist=1&tracks=DNA%2CAnnotations&nav=1&overview=1
                 // to
                 // /apollo/annotator/loadLink?loc=Group9.10:501765..501858&organism=16&tracks=&clientToken=1315746673267340807380563276
                 var hrefString = window.location.href;
