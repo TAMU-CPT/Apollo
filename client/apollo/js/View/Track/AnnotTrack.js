@@ -3520,6 +3520,12 @@ define([
                     if (div.style.visibility) {
                         div.style.visibility = null;
                     }
+
+                    // if feature-render annot-render ,
+                    // remove and add: gray-center-10pct
+                    if(div.className.indexOf("feature-render")>=0 &&  div.className.indexOf("annot-render")>=0 ){
+                        div.className = "gray-center-10pct";
+                    }
 // annot_context_menu.unBindDomNode(div);
                     $(div).unbind();
                     for (var i = 0; i < div.childNodes.length; ++i) {
@@ -4438,7 +4444,9 @@ define([
                                     // will be called on a
                                     // successful response.
                                     load: function (response, ioArgs) { //
-                                        if (window.parent) window.parent.location.reload();
+                                        if (window.parent){
+                                          window.parent.location.reload();
+                                        }
                                         else window.location.reload();
                                     },
                                     error: function (response, ioArgs) { //
