@@ -347,8 +347,8 @@ apollo {
 
     authentications = [
         ["name":"Username Password Authenticator",
-         "className":"usernamePasswordAuthenticatorService",
-         "active":true,
+            "className":"usernamePasswordAuthenticatorService",
+            "active":true,
         ]
         ,
         ["name":"Remote User Authenticator",
@@ -387,7 +387,7 @@ auditLog {
 jbrowse {
     git {
         url= "https://github.com/gmod/jbrowse"
-        tag = "8bd1befc40a8d856545af81627e4eff802936007"
+        tag = "29795a1bbb8da4706eba2b0f73724ac1b3e1e4e6"
 //		tag = "1.12.2-apollo"
 //        branch = "master"
         alwaysPull = false
@@ -399,6 +399,9 @@ jbrowse {
 //        type ="zip"
 //        fileName = "JBrowse-1.12.0-dev"
 //    }
+//
+//	// Warning: We are still testing the performance of the NeatFeatures plugins in combination with Apollo.
+//	// We advise caution if enabling these plugins with Apollo until this process is finalized.
     plugins {
         WebApollo{
             included = true
