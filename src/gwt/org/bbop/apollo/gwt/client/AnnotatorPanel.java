@@ -436,6 +436,7 @@ public class AnnotatorPanel extends Composite {
             case "rRNA":
             case "snRNA":
             case "snoRNA":
+            case "terminator":
             case "ncRNA":
                 transcriptDetailPanel.updateData(annotationInfo);
                 tabPanel.getTabWidget(1).getParent().setVisible(true);
