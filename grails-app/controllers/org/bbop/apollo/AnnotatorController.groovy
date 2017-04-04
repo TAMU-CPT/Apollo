@@ -296,6 +296,8 @@ class AnnotatorController {
                         break
                     case "repeat_region": viewableTypes.add(RepeatRegion.class.canonicalName)
                         break
+                    case "terminator": viewableTypes.add(Terminator.class.canonicalName)
+                        break
                     case "transposable_element": viewableTypes.add(TransposableElement.class.canonicalName)
                         break
                     default:

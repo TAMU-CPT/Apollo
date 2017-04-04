@@ -45,6 +45,7 @@ class RequestHandlingService {
 
     public static final List<String> viewableAnnotationFeatureList = [
             RepeatRegion.class.name,
+            Terminator.class.name,
             TransposableElement.class.name
     ]
     public static final List<String> viewableAnnotationTranscriptParentList = [
@@ -2244,7 +2245,7 @@ class RequestHandlingService {
         User user = permissionService.getCurrentUser(inputObject)
         JSONObject featureContainer = createJSONFeatureContainer()
 
-        def singletonFeatureTypes = [RepeatRegion.alternateCvTerm, TransposableElement.alternateCvTerm]
+        def singletonFeatureTypes = [RepeatRegion.alternateCvTerm, Terminator.alternateCvTerm, TransposableElement.alternateCvTerm]
         def rnaFeatureTypes = [MRNA.alternateCvTerm,MiRNA.alternateCvTerm,NcRNA.alternateCvTerm, RRNA.alternateCvTerm, SnRNA.alternateCvTerm, SnoRNA.alternateCvTerm, TRNA.alternateCvTerm, Transcript.alternateCvTerm]
 
         for (int i = 0; i < features.length(); i++) {

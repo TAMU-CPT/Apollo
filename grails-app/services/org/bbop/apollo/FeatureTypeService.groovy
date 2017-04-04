@@ -29,6 +29,7 @@ class FeatureTypeService {
         createFeatureTypeForFeature(NcRNA.class,NcRNA.alternateCvTerm)
         createFeatureTypeForFeature(RRNA.class,RRNA.alternateCvTerm)
         createFeatureTypeForFeature(RepeatRegion.class,RepeatRegion.alternateCvTerm)
+        createFeatureTypeForFeature(Terminator.class,Terminator.alternateCvTerm)
         createFeatureTypeForFeature(TransposableElement.class,TransposableElement.alternateCvTerm)
     }
 }
