@@ -402,6 +402,7 @@ public class AnnotatorPanel extends Composite {
         typeList.addItem("Gene");
         typeList.addItem("Pseudogene");
         typeList.addItem("Transposable Element", "transposable_element");
+        typeList.addItem("Terminator", "terminator");
         typeList.addItem("Repeat Region", "repeat_region");
     }
 
@@ -441,6 +442,7 @@ public class AnnotatorPanel extends Composite {
                 tabPanel.getTabWidget(1).getParent().setVisible(true);
                 exonDetailPanel.updateData(annotationInfo,selectedAnnotationInfo);
                 break;
+            case "terminator":
             case "transposable_element":
             case "repeat_region":
                 repeatRegionDetailPanel.updateData(annotationInfo);
@@ -535,6 +537,8 @@ public class AnnotatorPanel extends Composite {
 
                 String type = annotationInfo.getType();
                 switch (type) {
+                    case "terminator":
+                        return "term elem";
                     case "repeat_region":
                         return "repeat rgn";
                     case "transposable_element":
@@ -693,7 +697,7 @@ public class AnnotatorPanel extends Composite {
     public void displayFeature(int featureIndex) {
         AnnotationInfo annotationInfo = dataGrid.getVisibleItem(Math.abs(dataGrid.getVisibleRange().getStart() - featureIndex));
         String type = annotationInfo.getType();
-        if (type.equals("transposable_element") || type.equals("repeat_region")) {
+        if (type.equals("transposable_element") || type.equals("repeat_region") || type.equals("terminator")) {
             // do nothing
         }
         else {

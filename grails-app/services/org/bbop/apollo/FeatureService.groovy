@@ -32,7 +32,7 @@ class FeatureService {
     def sessionFactory
 
     public static final def rnaFeatureTypes = [MRNA.alternateCvTerm,MiRNA.alternateCvTerm,NcRNA.alternateCvTerm, RRNA.alternateCvTerm, SnRNA.alternateCvTerm, SnoRNA.alternateCvTerm, TRNA.alternateCvTerm, Transcript.alternateCvTerm]
-    public static final def singletonFeatureTypes = [RepeatRegion.alternateCvTerm, TransposableElement.alternateCvTerm]
+    public static final def singletonFeatureTypes = [RepeatRegion.alternateCvTerm, Terminator.alternateCvTerm, TransposableElement.alternateCvTerm]
     @Timed
     @Transactional
     FeatureLocation convertJSONToFeatureLocation(JSONObject jsonLocation, Sequence sequence, int defaultStrand = Strand.POSITIVE.value) throws JSONException {
@@ -1415,6 +1415,7 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
             case Pseudogene.ontologyId: return new Pseudogene()
             case Transcript.ontologyId: return new Transcript()
             case TransposableElement.ontologyId: return new TransposableElement()
+            case Terminator.ontologyId: return new Terminator()
             case RepeatRegion.ontologyId: return new RepeatRegion()
             case Insertion.ontologyId: return new Insertion()
             case Deletion.ontologyId: return new Deletion()
@@ -1450,6 +1451,8 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
                 case Pseudogene.cvTerm.toUpperCase(): return Pseudogene.ontologyId
                 case TransposableElement.alternateCvTerm.toUpperCase():
                 case TransposableElement.cvTerm.toUpperCase(): return TransposableElement.ontologyId
+                case Terminator.alternateCvTerm.toUpperCase():
+                case Terminator.cvTerm.toUpperCase(): return Terminator.ontologyId
                 case RepeatRegion.alternateCvTerm.toUpperCase():
                 case RepeatRegion.cvTerm.toUpperCase(): return RepeatRegion.ontologyId
                 case Insertion.cvTerm.toUpperCase(): return Insertion.ontologyId
