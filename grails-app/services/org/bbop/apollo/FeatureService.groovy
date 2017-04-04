@@ -88,6 +88,13 @@ class FeatureService {
         }
     }
 
+    def getOverlappingSequenceAlterations(Sequence sequence, int fmin, int fmax) {
+        Feature.executeQuery(
+                "SELECT DISTINCT sa FROM SequenceAlteration sa JOIN sa.featureLocations fl WHERE fl.sequence = :sequence AND ((fl.fmin <= :fmin AND fl.fmax > :fmin) OR (fl.fmin <= :fmax AND fl.fmax >= :fmax) OR (fl.fmin >= :fmin AND fl.fmax <= :fmax))",
+                [fmin: fmin, fmax: fmax, sequence: sequence]
+        )
+    }
+
     @Transactional
     void updateNewGsolFeatureAttributes(Feature gsolFeature, Sequence sequence = null) {
 
@@ -126,6 +133,7 @@ class FeatureService {
     def generateTranscript(JSONObject jsonTranscript, Sequence sequence, boolean suppressHistory, boolean useCDS = configWrapperService.useCDS(), boolean useName = false) {
         Gene gene = jsonTranscript.has(FeatureStringEnum.PARENT_ID.value) ? (Gene) Feature.findByUniqueName(jsonTranscript.getString(FeatureStringEnum.PARENT_ID.value)) : null;
         Transcript transcript = null
+        boolean readThroughStopCodon = false
 
         User owner = permissionService.getCurrentUser(jsonTranscript)
         // if the gene is set, then don't process, just set the transcript for the found gene
@@ -138,8 +146,13 @@ class FeatureService {
 
             setOwner(transcript, owner);
 
-            if (!useCDS || transcriptService.getCDS(transcript) == null) {
-                calculateCDS(transcript);
+            CDS cds = transcriptService.getCDS(transcript)
+            if (cds) {
+                readThroughStopCodon = cdsService.getStopCodonReadThrough(cds) ? true : false
+            }
+
+            if (!useCDS || cds == null) {
+                calculateCDS(transcript, readThroughStopCodon)
             }
             else {
                 // if there are any sequence alterations that overlaps this transcript then
@@ -189,8 +202,13 @@ class FeatureService {
                     //this one is working, but was marked as needing improvement
                     setOwner(tmpTranscript, owner);
 
-                    if (!useCDS || transcriptService.getCDS(tmpTranscript) == null) {
-                        calculateCDS(tmpTranscript);
+                    CDS cds = transcriptService.getCDS(tmpTranscript)
+                    if (cds) {
+                        readThroughStopCodon = cdsService.getStopCodonReadThrough(cds) ? true : false
+                    }
+
+                    if (!useCDS || cds == null) {
+                        calculateCDS(tmpTranscript, readThroughStopCodon)
                     }
                     else {
                         // if there are any sequence alterations that overlaps this transcript then
@@ -326,8 +344,13 @@ class FeatureService {
                 throw new AnnotationException("Feature cannot have negative coordinates");
             }
             transcript = transcriptService.getTranscripts(gene).iterator().next();
-            if (!useCDS || transcriptService.getCDS(transcript) == null) {
-                calculateCDS(transcript);
+            CDS cds = transcriptService.getCDS(transcript)
+            if (cds) {
+                readThroughStopCodon = cdsService.getStopCodonReadThrough(cds) ? true : false
+            }
+
+            if (!useCDS || cds == null) {
+                calculateCDS(transcript, readThroughStopCodon)
             }
             else {
                 // if there are any sequence alterations that overlaps this transcript then
@@ -503,7 +526,8 @@ class FeatureService {
     @Transactional
     def calculateCDS(Transcript transcript) {
         // NOTE: isPseudogene call seemed redundant with isProtenCoding
-        calculateCDS(transcript, false)
+        CDS cds = transcriptService.getCDS(transcript)
+        calculateCDS(transcript, cdsService.hasStopCodonReadThrough(cds))
 //        if (transcriptService.isProteinCoding(transcript) && (transcriptService.getGene(transcript) == null)) {
 ////            calculateCDS(editor, transcript, transcript.getCDS() != null ? transcript.getCDS().getStopCodonReadThrough() != null : false);
 ////            calculateCDS(transcript, transcript.getCDS() != null ? transcript.getCDS().getStopCodonReadThrough() != null : false);
@@ -1122,6 +1146,7 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
                 }
             }
             if (readThroughStopCodon) {
+                cdsService.deleteStopCodonReadThrough(cds)
                 String aa = SequenceTranslationHandler.translateSequence(getResiduesWithAlterationsAndFrameshifts(cds), translationTable, true, true);
                 int firstStopIndex = aa.indexOf(TranslationTable.STOP);
                 if (firstStopIndex < aa.length() - 1) {
@@ -1484,8 +1509,18 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
 
 
     int convertSourceCoordinateToLocalCoordinateForCDS(Feature feature, int sourceCoordinate) {
-        List<Exon> exons = exonService.getSortedExons(feature, true)
-        CDS cds = transcriptService.getCDS(feature)
+        def exons = []
+        CDS cds
+        if (feature instanceof Transcript) {
+            exons = exonService.getSortedExons(feature, true)
+            cds = transcriptService.getCDS(feature)
+        }
+        else if (feature instanceof CDS) {
+            Transcript transcript = transcriptService.getTranscript(feature)
+            exons = exonService.getSortedExons(transcript, true)
+            cds = feature
+        }
+
         int localCoordinate = 0
 
         if (!(cds.fmin <= sourceCoordinate && cds.fmax >= sourceCoordinate)) {
@@ -2168,7 +2203,15 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
     }
 
     def sequenceAlterationInContextOverlapper(Feature feature, SequenceAlterationInContext sequenceAlteration) {
-        List<Exon> exonList = exonService.getSortedExons(feature, true)
+        def exonList = []
+        if (feature instanceof Transcript) {
+            exonList = exonService.getSortedExons(feature, true)
+        }
+        else if (feature instanceof CDS) {
+            Transcript transcript = transcriptService.getTranscript(feature)
+            exonList = exonService.getSortedExons(transcript, true)
+        }
+
         for (Exon exon : exonList) {
             int fmin = exon.fmin
             int fmax = exon.fmax
@@ -2842,8 +2885,8 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
             updateNewGsolFeatureAttributes(feature, sequence)
 
             // setting back the original name for feature
-            if (useName && jsonFeature.has(FeatureStringEnum.USE_NAME.value)) {
-                feature.name = jsonFeature.get(FeatureStringEnum.USE_NAME.value)
+            if (useName && jsonFeature.has(FeatureStringEnum.NAME.value)) {
+                feature.name = jsonFeature.get(FeatureStringEnum.NAME.value)
             }
 
             setOwner(feature, user);
