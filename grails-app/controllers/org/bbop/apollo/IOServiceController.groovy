@@ -85,10 +85,11 @@ class IOServiceController extends AbstractApolloController {
             String region = dataObject.region
             def sequences = dataObject.sequences // can be array or string
             Organism organism = dataObject.organism ? Organism.findByCommonName(dataObject.organism) : preferenceService.getCurrentOrganismForCurrentUser(dataObject.getString(FeatureStringEnum.CLIENT_TOKEN.value))
+            log.debug "org: ${organism}"
 
 
             def st = System.currentTimeMillis()
-            def queryParams = [viewableAnnotationList: requestHandlingService.viewableAnnotationList, organism: organism]
+            def queryParams = [viewableAnnotationList: requestHandlingService.viewableAnnotationTypesList, organism: organism]
             if(exportAllSequences){
                 sequences = []
             }
@@ -97,6 +98,8 @@ class IOServiceController extends AbstractApolloController {
             }
             // caputures 3 level indirection, joins feature locations only. joining other things slows it down
             def genes = Gene.executeQuery("select distinct f from Gene f join fetch f.featureLocations fl join fetch f.parentFeatureRelationships pr join fetch pr.childFeature child join fetch child.featureLocations join fetch child.childFeatureRelationships join fetch child.parentFeatureRelationships cpr join fetch cpr.childFeature subchild join fetch subchild.featureLocations join fetch subchild.childFeatureRelationships left join fetch subchild.parentFeatureRelationships where fl.sequence.organism = :organism and f.class in (:viewableAnnotationList)" + (sequences ? " and fl.sequence.name in (:sequences)" : ""), queryParams)
+            log.debug "qP: ${queryParams}"
+            log.debug "genes: ${genes}"
             // captures rest of feats
             def otherFeats = Feature.createCriteria().list() {
                 featureLocations {
@@ -109,8 +112,9 @@ class IOServiceController extends AbstractApolloController {
                 }
                 'in'('class', requestHandlingService.viewableAlterations + requestHandlingService.viewableAnnotationFeatureList)
             }
-            log.debug "${otherFeats}"
+            log.debug "otherFeats: ${otherFeats}"
             def features = genes + otherFeats
+            log.debug "features: ${features}"
 
             log.debug "IOService query: ${System.currentTimeMillis() - st}ms"
 
