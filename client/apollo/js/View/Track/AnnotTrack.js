@@ -3861,6 +3861,87 @@ define([
                 this.openDialog("GFF3", content);
             },
 
+            getCacaoWindow: function(){
+                var selected = this.selectionManager.getSelection()[0];
+                var id = null,
+                    context = null;
+                if(selected.feature.data.parent_type == "gene"){
+                    id = selected.feature.data.parent_id;
+                    context = selected.feature;
+                }else{
+                    if(selected.feature._parent.data.parent_type == "gene"){
+                        id = selected.feature._parent.data.parent_id;
+                        context = selected.feature._parent;
+                    }
+                }
+                var spec = {
+                    action: "iframeDialog",
+                    url: "https://cpt.tamu.edu/cacao/#/gaf/create/?hideNav=1&gene_id=" + id,
+                };
+
+                var organism = $("div.menuBar table span[role='option']").text();
+
+                var evt;
+                // First we need to test if the feature exists. If it doesn't, create it.
+                dojo.xhrGet({
+                    url: "https://cpt.tamu.edu/cacao-backend/genes/" + id + "/",
+                    load: function (response, ioArgs) {
+                        // If it is good, just show the popup.
+                        selected.track._openDialog(spec, evt, context);
+                    },
+                    // The ERROR function will be called in an error case.
+                    error: function (response, ioArgs) {
+                        console.log("Feature does not exist");
+                        // Otherwise, we need to create the feature.
+
+                        var refseq = selected.track.genomeView.ref.name;
+                        console.log('sel', selected);
+
+                        // First, get refseq/organism IDs.
+                        dojo.xhrGet({
+                            url: "https://cpt.tamu.edu/cacao-backend/refseq/?name=" + refseq + "&organism__common_name=" + organism,
+                            handleAs: "json",
+                            load: function(response){
+                                var djangoRefSeqId = response.results[0].id,
+                                    djangoOrganismId = response.results[0].organism;
+                                // Here we have our two IDs, so we can now POST the feature.
+                                var postData = {
+                                    "id": id,
+                                    "start": selected.feature.data.start,
+                                    "end": selected.feature.data.end,
+                                    "strand": selected.feature.data.strand,
+                                    "refseq": djangoRefSeqId,
+                                    "db_object_id": id,
+                                    "db_object_symbol": id,
+                                    "db_object_name": "",
+                                    "db_object_synonym": "",
+                                    "db_object_type": "protein",
+                                    "gene_product_id": "",
+                                };
+
+                                dojo.xhrPost({
+                                    postData: postData,
+                                    url: "https://cpt.tamu.edu/cacao-backend/genes/",
+                                    handleAs: "json",
+                                    timeout: 5000 * 1000, // Time in milliseconds
+                                    load: function (response, ioArgs) {
+                                        console.log("Feature created!");
+                                        selected.track._openDialog(spec, evt, context);
+                                    },
+                                    error: function(response){
+                                        console.log("Failed to create feature", response);
+                                    }
+                                });
+                            },
+                            error: function(response){
+                                console.log("Unknown organism", response);
+                            }
+                        });
+
+                    }
+                });
+            },
+
             getSequence: function () {
                 var selected = this.selectionManager.getSelection();
                 this.getSequenceForSelectedFeatures(selected);
@@ -4523,6 +4604,16 @@ define([
                     }
                 }));
                 contextMenuItems["get_gff3"] = index++;
+
+
+                // Cacao
+                annot_context_menu.addChild(new dijit.MenuItem({
+                    label: "Make CPT GO Annotation",
+                    onClick: function (event) {
+                        thisB.getCacaoWindow();
+                    }
+                }));
+                contextMenuItems["make_cacao"] = index++;
 
                 annot_context_menu.addChild(new dijit.MenuItem({
                     label: "Zoom to Base Level",

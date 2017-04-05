@@ -263,48 +263,50 @@ apollo {
             //tmp_dir: "/opt/apollo/tmp" optional param
         ]
     ]
-    data_adapters = [[
-        permission: 1,
-        key: "GFF3",
-        data_adapters: [[
+    data_adapters = [
+        [
             permission: 1,
-            key: "Only GFF3",
-            options: "output=file&format=gzip&type=GFF3&exportGff3Fasta=false"
+            key: "GFF3",
+            data_adapters: [
+                [
+                    permission: 1,
+                    key: "Only GFF3",
+                    options: "output=file&format=gzip&type=GFF3&exportGff3Fasta=false"
+                ],
+                [
+                    permission: 1,
+                    key: "GFF3 with FASTA",
+                    options: "output=file&format=gzip&type=GFF3&exportGff3Fasta=true"
+                ]
+            ]
         ],
         [
             permission: 1,
-            key: "GFF3 with FASTA",
-            options: "output=file&format=gzip&type=GFF3&exportGff3Fasta=true"
-        ]]
-    ],
-    [
-        permission: 1,
-        key : "FASTA",
-        data_adapters :[[
-            permission : 1,
-            key : "peptide",
-            options : "output=file&format=gzip&type=FASTA&seqType=peptide"
-        ],
-        [
-            permission : 1,
-            key : "cDNA",
-            options : "output=file&format=gzip&type=FASTA&seqType=cdna"
+            key : "FASTA",
+            data_adapters :[
+                [
+                    permission : 1,
+                    key : "peptide",
+                    options : "output=file&format=gzip&type=FASTA&seqType=peptide"
+                ],
+                [
+                    permission : 1,
+                    key : "cDNA",
+                    options : "output=file&format=gzip&type=FASTA&seqType=cdna"
+                ],
+                [
+                    permission : 1,
+                    key : "CDS",
+                    options : "output=file&format=gzip&type=FASTA&seqType=cds"
+                ],
+                [
+                        permission : 1,
+                        key : "highlighted region",
+                        options : "output=file&format=gzip&type=FASTA&seqType=genomic"
+                ]
+            ]
         ]
-        ,
-        [
-            permission : 1,
-            key : "CDS",
-            options : "output=file&format=gzip&type=FASTA&seqType=cds"
-        ]
-        ,
-        [
-                permission : 1,
-                key : "highlighted region",
-                options : "output=file&format=gzip&type=FASTA&seqType=genomic"
-        ]
-        ]
-
-    ]]
+    ]
     
 
     // TODO: should come from config or via preferences database
@@ -431,5 +433,4 @@ jbrowse {
 //            alwaysPull = "true"
 //        }
     }
-
 }

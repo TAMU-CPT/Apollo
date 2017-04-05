@@ -3,6 +3,14 @@
       {
          "location" : "./plugins/WebApollo",
          "name" : "WebApollo"
+      },
+      {
+         "location" : "./plugins/GCContent",
+         "name" : "GCContent"
+      },
+      {
+         "location" : "./plugins/CACAO",
+         "name" : "CACAO"
       }
    ],
     "share_link" : 0,
@@ -76,6 +84,22 @@
          "label" : "Annotations",
          "type" : "WebApollo/View/Track/AnnotTrack",
          "subfeatures" : 1
+      },
+      {
+        "storeClass" : "JBrowse/Store/SeqFeature/SequenceChunks",
+        "type": "GCContent/View/Track/GCContentXY",
+        "label": "GC Skew",
+        "urlTemplate" : "../../../data/seq/{refseq_dirpath}/{refseq}-",
+        "gcMode": "skew",
+        "min_score": -1,
+        "bicolor_pivot": 0
+      },
+      {
+        "storeClass": "CACAO/Store/SeqFeature/REST",
+        "type": "CACAO/View/Track/CanvasFeatures",
+        "label": "CACAO",
+        "key": "CPT GO Annotations",
+        "baseUrl": "https://cpt.tamu.edu/cacao-backend/jbrowse/",
       }
     ],
    "favicon" : "./plugins/WebApollo/img/webapollo_favicon.ico",
