@@ -89,13 +89,14 @@ class IOServiceController extends AbstractApolloController {
 
 
             def st = System.currentTimeMillis()
-            def queryParams = [viewableAnnotationList: requestHandlingService.viewableAnnotationTypesList, organism: organism]
+            def queryParams = [viewableAnnotationList: requestHandlingService.viewableAnnotationList, organism: organism]
             if(exportAllSequences){
                 sequences = []
             }
             if (sequences) {
                 queryParams.sequences = sequences
             }
+            log.debug "seq: ${sequences}"
             // caputures 3 level indirection, joins feature locations only. joining other things slows it down
             def genes = Gene.executeQuery("select distinct f from Gene f join fetch f.featureLocations fl join fetch f.parentFeatureRelationships pr join fetch pr.childFeature child join fetch child.featureLocations join fetch child.childFeatureRelationships join fetch child.parentFeatureRelationships cpr join fetch cpr.childFeature subchild join fetch subchild.featureLocations join fetch subchild.childFeatureRelationships left join fetch subchild.parentFeatureRelationships where fl.sequence.organism = :organism and f.class in (:viewableAnnotationList)" + (sequences ? " and fl.sequence.name in (:sequences)" : ""), queryParams)
             log.debug "qP: ${queryParams}"
