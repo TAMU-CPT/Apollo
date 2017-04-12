@@ -34,6 +34,10 @@
     background-color: #FFFFDD;
 }
 
+.Dark .track.track_annotations {
+    background-color: #676767;
+}
+
 div.track_localannot {
     background-color: #DDDDCC;
 }
@@ -73,12 +77,18 @@ div.wa-sequence .dna-residues.forward-strand {
     color: black;
     z-index: 5;
 }
+.Dark div.wa-sequence .dna-residues.forward-strand {
+	color: white;
+}
 
 div.wa-sequence .dna-residues.reverse-strand {
     color: gray;
     border-top: 1px solid lightgray;
     z-index: 5;
     /* outline: 1px solid pink; */
+}
+.Dark div.wa-sequence .dna-residues.reverse-strand {
+	color: lightgray;
 }
 
 div.wa-sequence .aa-residues  {
@@ -444,6 +454,14 @@ div.annot-sequence  {
     border: 1px solid #01F;
 }
 
+.Dark .annot-CDS,
+.Dark .plus-annot-CDS,
+.Dark .minus-annot-CDS {
+    height: 16px;
+    background-color: #30AAFF;
+    border: 1px solid black;
+}
+
 .annot-UTR, x
 .plus-annot-UTR, 
 .minus-annot-UTR {
@@ -549,6 +567,32 @@ div.annot-sequence  {
 
 .colorCds .cds-frame2 {
     background-color: #8080FF;
+}
+
+.Dark.colorCds .dna-residues.cds-frame0 {
+	background-color: hsla(0, 70%, 40%, 1);
+}
+
+.Dark.colorCds .dna-residues.cds-frame1 {
+	background-color: hsla(120, 70%, 40%, 1);
+}
+
+.Dark.colorCds .dna-residues.cds-frame2 {
+	background-color: hsla(240, 70%, 40%, 1);
+}
+
+
+
+.Dark.colorCds .feature .cds-frame0 {
+    border: 1px solid hsla(0, 100%, 25%, 1);
+}
+
+.Dark.colorCds .feature .cds-frame1 {
+    border: 1px solid hsla(120, 100%, 25%, 1);
+}
+
+.Dark.colorCds .feature .cds-frame2 {
+    border: 1px solid hsla(240, 100%, 25%, 1);
 }
 
 /**
