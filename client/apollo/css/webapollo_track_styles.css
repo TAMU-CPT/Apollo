@@ -95,6 +95,9 @@ div.wa-sequence .aa-residues  {
     color: black;
     z-index: 5;
 }
+.Dark div.wa-sequence .aa-residues  {
+    color: white;
+}
 
 .aa-residues.cds-frame0 {
     background-color: #999999; 
@@ -307,13 +310,6 @@ div.annot-sequence  {
     top: 10%;
 }
 
-.black-80pct, 
-.plus-black-80pct, 
-.minus-black-80pct  {
-    background-color: #222;
-    height: 80%;
-    top: 10%;
-}
 
 .brightgreen-80pct, 
 .plus-brightgreen-80pct, 
@@ -459,7 +455,7 @@ div.annot-sequence  {
 .Dark .minus-annot-CDS {
     height: 16px;
     background-color: #30AAFF;
-    border: 1px solid black;
+    border: 1px solid hsla(205, 100%, 25%, 1);
 }
 
 .annot-UTR, x
@@ -570,18 +566,25 @@ div.annot-sequence  {
 }
 
 .Dark.colorCds .dna-residues.cds-frame0 {
-	background-color: hsla(0, 70%, 40%, 1);
+	background-color: #902748
 }
 
 .Dark.colorCds .dna-residues.cds-frame1 {
-	background-color: hsla(120, 70%, 40%, 1);
+	background-color: #366f4b;
 }
 
 .Dark.colorCds .dna-residues.cds-frame2 {
-	background-color: hsla(240, 70%, 40%, 1);
+	background-color: #4e408e;
 }
 
+.Dark div.block.height_overflow .height_overflow_message {
+	color: white;
+	text-shadow: none;
+}
 
+.Dark div.ruler svg g line {
+	stroke: white;
+}
 
 .Dark.colorCds .feature .cds-frame0 {
     border: 1px solid hsla(0, 100%, 25%, 1);
@@ -593,6 +596,12 @@ div.annot-sequence  {
 
 .Dark.colorCds .feature .cds-frame2 {
     border: 1px solid hsla(240, 100%, 25%, 1);
+}
+
+
+.Dark .track .loading {
+	background: rgb(59, 59, 61);
+	color: white;
 }
 
 /**
