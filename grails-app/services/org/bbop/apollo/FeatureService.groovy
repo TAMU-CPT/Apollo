@@ -1683,6 +1683,7 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
     @Timed
     JSONObject convertFeatureToJSON(Feature gsolFeature, boolean includeSequence = false) {
         JSONObject jsonFeature = new JSONObject();
+        log.warn "cFTJ: ${gsolFeature}"
         if (gsolFeature.id) {
             jsonFeature.put(FeatureStringEnum.ID.value, gsolFeature.id);
         }

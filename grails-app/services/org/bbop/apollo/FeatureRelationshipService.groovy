@@ -37,6 +37,7 @@ class FeatureRelationshipService {
     Feature getParentForFeature(Feature feature, String... ontologyId) {
 
         List<Feature> featureList = getParentsForFeature(feature, ontologyId)
+		log.warn "gPFF ${feature} ${ontologyId} => ${featureList}"
 
         if (featureList.size() == 0) {
             return null
@@ -52,8 +53,10 @@ class FeatureRelationshipService {
 
     List<Feature> getParentsForFeature(Feature feature, String... ontologyIds) {
         def list = new ArrayList<Feature>()
+		log.warn "gPsFF ${feature?.childFeatureRelationships}"
         if (feature?.childFeatureRelationships != null) {
             feature.childFeatureRelationships.each { it ->
+				log.warn "gPsFF.it ${feature.uniqueName} ${it.parentFeature.uniqueName} ${it.parentFeature.ontologyId}"
                 if (ontologyIds.size() == 0 || (it && ontologyIds.contains(it.parentFeature.ontologyId))) {
                     list.push(it.parentFeature)
                 }

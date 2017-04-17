@@ -1015,6 +1015,10 @@ class RequestHandlingService {
             }
             Exon exon = Exon.findByUniqueName(locationCommand.getString(FeatureStringEnum.UNIQUENAME.value))
             Transcript transcript = exonService.getTranscript(exon)
+            if(transcript == null){
+                continue;
+            }
+            log.warn "sEB ${exon} ${transcript}"
             JSONObject oldTranscriptJsonObject = featureService.convertFeatureToJSON(transcript)
 
 
