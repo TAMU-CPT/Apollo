@@ -33,3 +33,5 @@ setup.log
 docs/Makefile
 .gradle
 .slcache
+node_modules
+web-app
