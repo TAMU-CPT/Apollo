@@ -10,6 +10,7 @@ class AuthController {
 
 
     def permissionService
+    def preferenceService
 
     def index = { redirect(action: "login", params: params) }
 
@@ -50,10 +51,14 @@ class AuthController {
             // password is incorrect.
             permissionService.authenticateWithToken(authToken,request)
 //            SecurityUtils.subject.login(authToken)
-            if(targetUri){
-                log.info "Redirecting to '${targetUri}'."
+            if(targetUri) {
+                if (targetUri.contains("http://") || targetUri.contains("https://") || targetUri.contains("ftp://")) {
+                    redirect(uri: "${request.contextPath}${targetUri}")
+                }
+                else {
+                    redirect(uri: targetUri)
+                }
 
-                redirect(uri: targetUri)
                 return
             }
         }
@@ -81,6 +86,7 @@ class AuthController {
     }
 
     def signOut = {
+        preferenceService.evaluateSaves(true)
         // Log the user out of the application.
         SecurityUtils.subject?.logout()
         webRequest.getCurrentRequest().session = null

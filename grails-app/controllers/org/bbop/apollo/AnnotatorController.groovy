@@ -1,16 +1,19 @@
 package org.bbop.apollo
 
 import grails.converters.JSON
+import grails.transaction.NotTransactional
 import grails.transaction.Transactional
 import org.bbop.apollo.event.AnnotationEvent
 import org.bbop.apollo.gwt.shared.ClientTokenGenerator
 import org.bbop.apollo.gwt.shared.FeatureStringEnum
+import org.bbop.apollo.gwt.shared.GlobalPermissionEnum
 import org.bbop.apollo.gwt.shared.PermissionEnum
 import org.bbop.apollo.report.AnnotatorSummary
 import org.codehaus.groovy.grails.web.json.JSONArray
 import org.codehaus.groovy.grails.web.json.JSONException
 import org.codehaus.groovy.grails.web.json.JSONObject
 import org.hibernate.FetchMode
+import org.restapidoc.annotation.RestApi
 import org.restapidoc.annotation.RestApiMethod
 import org.restapidoc.annotation.RestApiParam
 import org.restapidoc.annotation.RestApiParams
@@ -21,6 +24,7 @@ import org.springframework.http.HttpStatus
 /**
  * This is server-side code supporting the high-level functionality of the GWT AnnotatorPanel class.
  */
+@RestApi(name = "Application Services", description = "Methods for running the annotation engine")
 class AnnotatorController {
 
     def featureService
@@ -30,6 +34,10 @@ class AnnotatorController {
     def preferenceService
     def reportService
     def featureRelationshipService
+    def configWrapperService
+    def exportService
+    def variantService
+    def grailsApplication
 
     private List<String> reservedList = ["loc",
                                          FeatureStringEnum.CLIENT_TOKEN.value,
@@ -46,19 +54,20 @@ class AnnotatorController {
      * @return
      */
     def loadLink() {
+        log.debug "Parameter for loadLink: ${params} vs ${request.parameterMap}"
         String clientToken
         try {
             if (params.containsKey(FeatureStringEnum.CLIENT_TOKEN.value)) {
                 clientToken = params[FeatureStringEnum.CLIENT_TOKEN.value]
             } else {
                 clientToken = ClientTokenGenerator.generateRandomString()
-                println 'generating client token on the backend: ' + clientToken
+                log.debug 'generating client token on the backend: ' + clientToken
             }
             Organism organism
             // check organism first
             if (params.containsKey(FeatureStringEnum.ORGANISM.value)) {
                 String organismString = params[FeatureStringEnum.ORGANISM.value]
-                organism = preferenceService.getOrganismForToken(organismString)
+                organism = preferenceService.getOrganismForTokenInDB(organismString)
             }
             organism = organism ?: preferenceService.getCurrentOrganismForCurrentUser(clientToken)
             def allowedOrganisms = permissionService.getOrganisms(permissionService.currentUser)
@@ -111,23 +120,19 @@ class AnnotatorController {
         String queryParamString = ""
         def keyList = []
         // this fixes a bug in addStores being duplicated or processed incorrectly
-        for (p in params) {
-            // if "addStores is not being processed correclty, this will fix it
-            if (p.key.startsWith("addStores=")) {
-                if (!p.value) {
-                    queryParamString += "&" + p.key
-                    keyList << "addStores"
+        for (p in request.parameterMap) {
+            if (!reservedList.contains(p.key) && !keyList.contains(p.key)) {
+                p.value.each {
+                    queryParamString += "&${p.key}=${it}"
                 }
-            } else if (!reservedList.contains(p.key) && !keyList.contains(p.key)) {
-                queryParamString += "&" + p
                 keyList << p.key
             }
         }
 
-        // for some reason the addTracks requires the context path, which seems to be an obscure bug in grails
-        if (queryParamString.contains("addTracks")) {
+        if (queryParamString.contains("http://") || queryParamString.contains("https://") || queryParamString.contains("ftp://")) {
             redirect uri: "${request.contextPath}/annotator/index?clientToken=" + clientToken + queryParamString
-        } else {
+        }
+        else {
             redirect uri: "/annotator/index?clientToken=" + clientToken + queryParamString
         }
 
@@ -136,6 +141,7 @@ class AnnotatorController {
     /**
      * Loads the main annotator panel.
      */
+    @NotTransactional
     def index() {
         log.debug "loading the index"
         String uuid = UUID.randomUUID().toString()
@@ -143,11 +149,20 @@ class AnnotatorController {
         [userKey: uuid, clientToken: clientToken]
     }
 
+    @NotTransactional
+    def getExtraTabs(){
+        def extraTabs = configWrapperService.extraTabs
+        render extraTabs as JSON
+    }
 
+    @NotTransactional
     def adminPanel() {
         if (permissionService.checkPermissions(PermissionEnum.ADMINISTRATE)) {
+            Integer highestGlobalRoleRank = permissionService.currentUser.roles.sort(){ a,b -> a.rank <=> b.rank}.first().rank // should return the highest either way
+//            permissionService.getPermissionsForUser(permissionService.currentUser)
+
             def administativePanel = grailsApplication.config.apollo.administrativePanel
-            [links: administativePanel]
+            [links: administativePanel,highestRank:highestGlobalRoleRank,roles:Role.all]
         } else {
             render text: "Unauthorized"
         }
@@ -300,13 +315,14 @@ class AnnotatorController {
                         break
                     case "transposable_element": viewableTypes.add(TransposableElement.class.canonicalName)
                         break
+                    case "sequence_alteration": viewableTypes.add(SequenceAlteration.class.canonicalName)
                     default:
                         log.info "Type not found for annotation filter '${type}'"
-                        viewableTypes = requestHandlingService.viewableAnnotationList
+                        viewableTypes = requestHandlingService.viewableAnnotationList + requestHandlingService.viewableSequenceAlterationList
                         break
                 }
             } else {
-                viewableTypes = requestHandlingService.viewableAnnotationList
+                viewableTypes = requestHandlingService.viewableAnnotationList + requestHandlingService.viewableSequenceAlterationList
             }
 
             long start = System.currentTimeMillis()
@@ -404,6 +420,140 @@ class AnnotatorController {
 
     }
 
+    def updateAlternateAlleles() {
+        JSONObject dataObject = permissionService.handleInput(request, params)
+        JSONObject updateFeatureContainer = requestHandlingService.createJSONFeatureContainer()
+
+        if (!permissionService.hasPermissions(dataObject, PermissionEnum.WRITE)) {
+            render status: HttpStatus.UNAUTHORIZED
+            return
+        }
+
+        JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
+        for (int i = 0; i < featuresArray.size(); i++) {
+            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            Feature feature = variantService.updateAlternateAlleles(jsonFeature)
+            JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
+            updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
+        }
+
+        render updateFeatureContainer
+    }
+
+    def addAlleleInfo() {
+        JSONObject dataObject = permissionService.handleInput(request, params)
+        JSONObject updateFeatureContainer = requestHandlingService.createJSONFeatureContainer()
+
+        if (!permissionService.hasPermissions(dataObject, PermissionEnum.WRITE)) {
+            render status: HttpStatus.UNAUTHORIZED
+            return
+        }
+
+        JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
+        for (int i = 0; i < featuresArray.size(); i++) {
+            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            Feature feature = variantService.addAlleleInfo(jsonFeature)
+            JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
+            updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
+        }
+        render updateFeatureContainer
+    }
+
+    def updateAlleleInfo() {
+        JSONObject dataObject = permissionService.handleInput(request, params)
+        JSONObject updateFeatureContainer = requestHandlingService.createJSONFeatureContainer()
+
+        if (!permissionService.hasPermissions(dataObject, PermissionEnum.WRITE)) {
+            render status: HttpStatus.UNAUTHORIZED
+            return
+        }
+
+        JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
+        for (int i = 0; i < featuresArray.size(); i++) {
+            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            Feature feature = variantService.updateAlleleInfo(jsonFeature)
+            JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
+            updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
+        }
+        render updateFeatureContainer
+    }
+
+    def deleteAlleleInfo() {
+        JSONObject dataObject = permissionService.handleInput(request, params)
+        JSONObject updateFeatureContainer = requestHandlingService.createJSONFeatureContainer()
+
+        if (!permissionService.hasPermissions(dataObject, PermissionEnum.WRITE)) {
+            render status: HttpStatus.UNAUTHORIZED
+            return
+        }
+
+        JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
+        for (int i = 0; i < featuresArray.size(); i++) {
+            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            Feature feature = variantService.deleteAlleleInfo(jsonFeature)
+            JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
+            updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
+        }
+        render updateFeatureContainer
+    }
+
+    def addVariantInfo() {
+        JSONObject dataObject = permissionService.handleInput(request, params)
+        JSONObject updateFeatureContainer = requestHandlingService.createJSONFeatureContainer()
+
+        if (!permissionService.hasPermissions(dataObject, PermissionEnum.WRITE)) {
+            render status: HttpStatus.UNAUTHORIZED
+            return
+        }
+
+        JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
+        for (int i = 0; i < featuresArray.size(); i++) {
+            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            Feature feature = variantService.addVariantInfo(jsonFeature)
+            JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
+            updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
+        }
+        render updateFeatureContainer
+    }
+
+    def updateVariantInfo() {
+        JSONObject dataObject = permissionService.handleInput(request, params)
+        JSONObject updateFeatureContainer = requestHandlingService.createJSONFeatureContainer()
+
+        if (!permissionService.hasPermissions(dataObject, PermissionEnum.WRITE)) {
+            render status: HttpStatus.UNAUTHORIZED
+            return
+        }
+
+        JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
+        for (int i = 0; i < featuresArray.size(); i++) {
+            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            Feature feature = variantService.updateVariantInfo(jsonFeature)
+            JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
+            updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
+        }
+        render updateFeatureContainer
+    }
+
+    def deleteVariantInfo() {
+        JSONObject dataObject = permissionService.handleInput(request, params)
+        JSONObject updateFeatureContainer = requestHandlingService.createJSONFeatureContainer()
+
+        if (!permissionService.hasPermissions(dataObject, PermissionEnum.WRITE)) {
+            render status: HttpStatus.UNAUTHORIZED
+            return
+        }
+
+        JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
+        for (int i = 0; i < featuresArray.size(); i++) {
+            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            Feature feature = variantService.deleteVariantInfo(jsonFeature)
+            JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
+            updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
+        }
+        render updateFeatureContainer
+    }
+
     /**
      * This is a public passthrough to version
      */
@@ -418,6 +568,7 @@ class AnnotatorController {
      */
     @Transactional
     def getAppState() {
+        preferenceService.evaluateSaves(true)
         render annotatorService.getAppState(params.get(FeatureStringEnum.CLIENT_TOKEN.value).toString()) as JSON
     }
 
@@ -426,7 +577,7 @@ class AnnotatorController {
     @Transactional
     def setCurrentOrganism(Organism organismInstance) {
         // set the current organism
-        preferenceService.setCurrentOrganism(permissionService.currentUser, organismInstance, params[FeatureStringEnum.CLIENT_TOKEN.value])
+        preferenceService.setCurrentOrganism(permissionService.currentUser, organismInstance, params[FeatureStringEnum.CLIENT_TOKEN.value] as String)
         session.setAttribute(FeatureStringEnum.ORGANISM_JBROWSE_DIRECTORY.value, organismInstance.directory)
 
         if (!permissionService.checkPermissions(PermissionEnum.READ)) {
@@ -435,7 +586,7 @@ class AnnotatorController {
             return
         }
 
-        render annotatorService.getAppState(params[FeatureStringEnum.CLIENT_TOKEN.value]) as JSON
+        render annotatorService.getAppState(params[FeatureStringEnum.CLIENT_TOKEN.value] as String) as JSON
     }
 
     /**
@@ -448,10 +599,10 @@ class AnnotatorController {
             return
         }
         // set the current organism and sequence Id (if both)
-        preferenceService.setCurrentSequence(permissionService.currentUser, sequenceInstance, params[FeatureStringEnum.CLIENT_TOKEN.value])
+        preferenceService.setCurrentSequence(permissionService.currentUser, sequenceInstance, params[FeatureStringEnum.CLIENT_TOKEN.value] as String)
         session.setAttribute(FeatureStringEnum.ORGANISM_JBROWSE_DIRECTORY.value, sequenceInstance.organism.directory)
 
-        render annotatorService.getAppState(params[FeatureStringEnum.CLIENT_TOKEN.value]) as JSON
+        render annotatorService.getAppState(params[FeatureStringEnum.CLIENT_TOKEN.value] as String) as JSON
     }
 
     def notAuthorized() {
@@ -476,16 +627,58 @@ class AnnotatorController {
         render view: "report", model: [annotatorInstanceList: annotatorSummaryList, annotatorInstanceCount: User.count]
     }
 
+    /**
+     * report annotation summary that is grouped by userGroups
+     */
+    def instructorReport(UserGroup userGroup, Integer max) {
+        params.max = Math.min(max ?: 20, 100)
+        // restricted groups
+        def groups = UserGroup.all
+        def filteredGroups =  groups
+        // if user is admin, then include all
+        // if group has metadata with the creator or no metadata then include
+
+        if (!permissionService.isAdmin()) {
+            log.debug "filtering groups"
+
+            filteredGroups = groups.findAll(){
+                it.metadata == null || it.getMetaData("creator") == (permissionService.currentUser.id as String) || permissionService.isGroupAdmin(it, permissionService.currentUser)
+            }
+        }
+        if (!filteredGroups) {
+            def error = [error: "no authorized groups"]
+            render error as JSON
+            return
+        }
+        userGroup = userGroup?:filteredGroups.first()
+
+        List<AnnotatorSummary> annotatorSummaryList = new ArrayList<>()
+        List<User> allUsers = User.list(params)
+        List<User> annotators = allUsers.findAll(){
+            it.userGroups.contains(userGroup)
+        }
+
+        def annotatorInstanceCount = userGroup.users.size()
+        annotators.each {
+            annotatorSummaryList.add(reportService.generateAnnotatorSummary(it, true))
+        }
+
+        render view: "instructorReport", model: [userGroups: filteredGroups, userGroup: userGroup, permissionService: permissionService, annotatorInstanceList: annotatorSummaryList, annotatorInstanceCount: annotatorInstanceCount]
+
+    }
+
     def detail(User user) {
         if (!permissionService.checkPermissions(PermissionEnum.ADMINISTRATE)) {
             flash.message = permissionService.getInsufficientPermissionMessage(PermissionEnum.ADMINISTRATE)
             redirect(uri: "/auth/login")
             return
         }
-        render view: "detail", model: [annotatorInstance: reportService.generateAnnotatorSummary(user)]
+        render view: "detail", model: [annotatorInstance: reportService.generateAnnotatorSummary(user, true)]
     }
 
     def ping() {
+        log.debug "Ping: Evaluating Saves"
+        preferenceService.evaluateSaves()
         if (permissionService.checkPermissions(PermissionEnum.READ)) {
             log.debug("permissions checked and alive")
             render new JSONObject() as JSON
@@ -494,4 +687,94 @@ class AnnotatorController {
             redirect(uri: "/auth/login")
         }
     }
+
+    def export() {
+        if(!params.max) params.max = 10
+        response.contentType = grailsApplication.config.grails.mime.types[params.format]
+        response.setHeader("Content-disposition", "attachment; filename=annotators.${params.extension}")
+        List fields = ["username", "firstname", "lastname", "usergroup", "organism", "totalfeaturecount", "genecount", "transcripts", "exons", "te", "rr", "lastupdated"]
+        Map labels = ["username": "Username", "firstname": "First Name", "lastname": "Last Name", "usergroup": "User Group", "organism": "Organism", "totalfeaturecount": "Top Level Features", "genecount": "Genes", "transcripts": "Transcripts", "exons": "Exons", "te": "Transposable Elements", "rr": "Repeat Regions", "lastupdated": "Last Updated"]
+        Map formatters = [:]
+        Map parameters = [title: "Annotators Summary"]
+
+        List<String> groups = []
+        groups.addAll(params.userGroups)
+        def annotatorGroupList = [] as List
+        groups.each { group ->
+            def userGroup = UserGroup.findById(group)
+            def annotators = userGroup.users
+            annotators.each { annotator ->
+                def annotatorSummary = reportService.generateAnnotatorSummary(annotator, true)
+                annotatorSummary.userOrganismPermissionList.each {
+                    Organism organism = it.userOrganismPermission.organism
+
+                    LinkedHashMap row = new LinkedHashMap()
+                    row.put("username", annotator.username)
+                    row.put("firstname", annotator.firstName)
+                    row.put("lastname", annotator.lastName)
+                    row.put("usergroup", userGroup.name)
+                    row.put("organism", organism.commonName)
+                    row.put("totalfeaturecount", it.totalFeatureCount)
+                    row.put("genecount", it.geneCount)
+                    row.put("transcripts", it.transcriptCount)
+                    row.put("exons", it.exonCount)
+                    row.put("te", it.transposableElementCount)
+                    row.put("rr", it.repeatRegionCount)
+                    row.put("lastupdated", it.lastUpdated)
+                    annotatorGroupList.add(row)
+                }
+
+            }
+        }
+        exportService.export(params.format, response.outputStream, annotatorGroupList, fields, labels, formatters, parameters)
+    }
+
+    @RestApiMethod(description = "Get annotators report for group", path = "/group/getAnnotatorsReportForGroup", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "id", type = "long", paramType = RestApiParamType.QUERY, description = "Group ID (or specify the name)")
+            , @RestApiParam(name = "name", type = "string", paramType = RestApiParamType.QUERY, description = "Group name")
+    ]
+    )
+    def getAnnotatorsReportForGroup(){
+        JSONObject dataObject = permissionService.handleInput(request, params)
+        if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN)) {
+            render status: HttpStatus.UNAUTHORIZED.value()
+            return
+        }
+        log.info "get annotators report for group"
+        def group
+        if (!dataObject.id && !dataObject.name) {
+            def userGroups = UserGroup.all
+            def groupList = userGroups.findAll(){
+                it.metadata == null || it.getMetaData("creator") == (permissionService.currentUser.id as String) || permissionService.isGroupAdmin(it, permissionService.currentUser)
+            }
+            group = groupList.collect{it.id}
+        }
+        if (!group && dataObject.id) {
+            def userGroup = UserGroup.findById(dataObject.id)
+            if (userGroup) {
+                group = userGroup.id
+            }
+        }
+        if (!group && dataObject.name) {
+            def userGroup = UserGroup.findByName(dataObject.name)
+            if (userGroup) {
+                group = userGroup.id
+            }
+        }
+        if (!group) {
+            JSONObject jsonObject = new JSONObject()
+            jsonObject.put(FeatureStringEnum.ERROR.value, "Failed to get report for the group")
+            render jsonObject as JSON
+            return
+        }
+        params.format = 'csv'
+        params.extension = 'csv'
+        params.userGroups = []
+        params.userGroups.addAll(group)
+        export()
+    }
+
 }

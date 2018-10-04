@@ -5,6 +5,7 @@ import grails.transaction.Transactional
 import org.apache.shiro.authc.UsernamePasswordToken
 import org.apache.shiro.crypto.hash.Sha256Hash
 import org.bbop.apollo.gwt.shared.FeatureStringEnum
+import org.bbop.apollo.gwt.shared.GlobalPermissionEnum
 import org.bbop.apollo.gwt.shared.PermissionEnum
 import org.codehaus.groovy.grails.web.json.JSONArray
 import org.codehaus.groovy.grails.web.json.JSONObject
@@ -30,19 +31,35 @@ class UserController {
             @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
             , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
             , @RestApiParam(name = "userId", type = "long / string", paramType = RestApiParamType.QUERY, description = "Optionally only user a specific userId as an integer database id or a username string")
+            , @RestApiParam(name = "start", type = "long / string", paramType = RestApiParamType.QUERY, description = "(optional) Result start / offset")
+            , @RestApiParam(name = "length", type = "long / string", paramType = RestApiParamType.QUERY, description = "(optional) Result length")
+            , @RestApiParam(name = "name", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Search name")
+            , @RestApiParam(name = "sortColumn", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Sort column, default 'name'")
+            , @RestApiParam(name = "sortAscending", type = "boolean", paramType = RestApiParamType.QUERY, description = "(optional) Sort column is ascending if true (default false)")
+            , @RestApiParam(name = "omitEmptyOrganisms", type = "boolean", paramType = RestApiParamType.QUERY, description = "(optional) Omits empty organism permissions from return (default false)")
     ])
     def loadUsers() {
         try {
-            JSONObject dataObject = permissionService.handleInput(request,params)
+            JSONObject dataObject = permissionService.handleInput(request, params)
             JSONArray returnArray = new JSONArray()
-            if (!permissionService.hasGlobalPermissions(dataObject, PermissionEnum.ADMINISTRATE)) {
+            // allow instructor see all the users
+            if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.INSTRUCTOR)) {
                 render status: HttpStatus.UNAUTHORIZED
                 return
             }
+            // to support webservice, get current user from session or input object
+            def currentUser = permissionService.getCurrentUser(dataObject)
+            def allowableOrganisms = permissionService.getOrganisms(currentUser)
 
-            def allowableOrganisms = permissionService.getOrganisms(permissionService.currentUser)
+            List<String> allUserGroups = UserGroup.all
 
-            List<String> allUserGroups = UserGroup.all.name
+            // instead of using !permissionService.isAdmin() because it only works for login user but doesn't work for webservice
+            if (!permissionService.isUserGlobalAdmin(currentUser)) {
+                allUserGroups = allUserGroups.findAll() {
+                    it.metadata == null || it.getMetaData(FeatureStringEnum.CREATOR.value) == (currentUser.id as String) || permissionService.isGroupAdmin(it, currentUser)
+                }
+            }
+            List<String> allUserGroupsName = allUserGroups.name
             Map<String, List<UserOrganismPermission>> userOrganismPermissionMap = new HashMap<>()
             List<UserOrganismPermission> userOrganismPermissionList = UserOrganismPermission.findAllByOrganismInList(allowableOrganisms as List)
             for (UserOrganismPermission userOrganismPermission in userOrganismPermissionList) {
@@ -55,16 +72,60 @@ class UserController {
             }
 
             def c = User.createCriteria()
-            def users = c.list() {
+            def offset = dataObject.start ?: 0
+            def maxResults = dataObject.length ?: Integer.MAX_VALUE
+            def searchName = dataObject.name ?: null
+            def sortName = dataObject.sortColumn ?: 'name'
+            def sortAscending = dataObject.sortAscending ?: true
+            def omitEmptyOrganisms = dataObject.omitEmptyOrganisms != null ? dataObject.omitEmptyOrganisms : false
+
+            def users = c.list(max: maxResults, offset: offset) {
                 if (dataObject.userId && dataObject.userId in Integer) {
                     eq('id', (Long) dataObject.userId)
                 }
                 if (dataObject.userId && dataObject.userId in String) {
                     eq('username', dataObject.userId)
                 }
-            }.unique{ a, b ->
+                if (searchName) {
+                    or {
+                        ilike('firstName', '%' + searchName + '%')
+                        ilike('lastName', '%' + searchName + '%')
+                        ilike('username', '%' + searchName + '%')
+                    }
+                }
+                if (sortName) {
+                    switch (sortName) {
+                        case "name":
+                            order('firstName', sortAscending ? "asc" : "desc")
+                            order('lastName', sortAscending ? "asc" : "desc")
+                            break
+                        case "email":
+                            order('username', sortAscending ? "asc" : "desc")
+                            break
+                    }
+                }
+            }.unique { a, b ->
                 a.id <=> b.id
             }
+
+            int userCount = User.withCriteria {
+                if (dataObject.userId && dataObject.userId in Integer) {
+                    eq('id', (Long) dataObject.userId)
+                }
+                if (dataObject.userId && dataObject.userId in String) {
+                    eq('username', dataObject.userId)
+                }
+                if (searchName) {
+                    or {
+                        ilike('firstName', '%' + searchName + '%')
+                        ilike('lastName', '%' + searchName + '%')
+                        ilike('username', '%' + searchName + '%')
+                    }
+                }
+            }.unique { a, b ->
+                a.id <=> b.id
+            }.size()
+
             users.each {
                 def userObject = new JSONObject()
 
@@ -78,7 +139,15 @@ class UserController {
 
                 JSONArray groupsArray = new JSONArray()
                 List<String> groupsForUser = new ArrayList<>()
-                for (group in it.userGroups) {
+                // filter the userGroups to only show that the group that current instructor owned
+                def userGroups = it.userGroups
+                if (!permissionService.isUserGlobalAdmin(currentUser)) {
+                    userGroups = userGroups.findAll() {
+                        it.metadata == null || it.getMetaData(FeatureStringEnum.CREATOR.value) == (currentUser.id as String) || permissionService.isGroupAdmin(it, currentUser)
+                    }
+                }
+
+                for (group in userGroups) {
                     JSONObject groupJson = new JSONObject()
                     groupsForUser.add(group.name)
                     groupJson.put("name", group.name)
@@ -88,7 +157,7 @@ class UserController {
 
 
                 JSONArray availableGroupsArray = new JSONArray()
-                List<String> availableGroups = allUserGroups - groupsForUser
+                List<String> availableGroups = allUserGroupsName - groupsForUser
                 for (group in availableGroups) {
                     JSONObject groupJson = new JSONObject()
                     groupJson.put("name", group)
@@ -106,6 +175,7 @@ class UserController {
                         JSONObject organismJSON = new JSONObject()
                         organismJSON.put("organism", userOrganismPermission.organism.commonName)
                         organismJSON.put("permissions", userOrganismPermission.permissions)
+                        organismJSON.put("permissionArray", userOrganismPermission.permissionValues)
                         organismJSON.put("userId", userOrganismPermission.userId)
                         organismJSON.put("id", userOrganismPermission.id)
                         organismPermissionsArray.add(organismJSON)
@@ -118,16 +188,23 @@ class UserController {
                     !organismsWithPermissions.contains(it.id)
                 }
 
-                for (Organism organism in organismList) {
-                    JSONObject organismJSON = new JSONObject()
-                    organismJSON.put("organism", organism.commonName)
-                    organismJSON.put("permissions", "[]")
-                    organismJSON.put("userId", it.id)
-                    organismPermissionsArray.add(organismJSON)
+                if (!omitEmptyOrganisms) {
+                    for (Organism organism in organismList) {
+                        JSONObject organismJSON = new JSONObject()
+                        organismJSON.put("organism", organism.commonName)
+                        organismJSON.put("permissions", "[]")
+                        organismJSON.put("permissionArray", new JSONArray())
+                        organismJSON.put("userId", it.id)
+                        organismPermissionsArray.add(organismJSON)
+                    }
                 }
 
 
                 userObject.organismPermissions = organismPermissionsArray
+
+                // could probably be done in a separate object
+                userObject.userCount = userCount
+                userObject.searchName = searchName
 
                 returnArray.put(userObject)
             }
@@ -145,21 +222,20 @@ class UserController {
     @Transactional
     def checkLogin() {
         def currentUser = permissionService.currentUser
-
+        preferenceService.evaluateSaves(true)
 
         // grab from session
-        if(!currentUser){
-            def authToken  = null
-            if(request.getParameter("username")){
+        if (!currentUser) {
+            def authToken = null
+            if (request.getParameter("username")) {
                 String username = request.getParameter("username")
                 String password = request.getParameter("password")
                 authToken = new UsernamePasswordToken(username, password)
             }
 
-            if(permissionService.authenticateWithToken(request)){
+            if (permissionService.authenticateWithToken(request)) {
                 currentUser = permissionService.currentUser
-            }
-            else{
+            } else {
                 log.error("Failed to authenticate")
             }
         }
@@ -168,14 +244,14 @@ class UserController {
             UserOrganismPreference userOrganismPreference
             try {
                 // sets it by default
-                userOrganismPreference = preferenceService.getCurrentOrganismPreference(params[FeatureStringEnum.CLIENT_TOKEN.value])
+                userOrganismPreference = preferenceService.getCurrentOrganismPreferenceInDB(params[FeatureStringEnum.CLIENT_TOKEN.value])
             } catch (e) {
                 log.error(e)
             }
 
             def userObject = userService.convertUserToJson(currentUser)
 
-            if ((!userOrganismPreference || !permissionService.hasAnyPermissions(currentUser)) && !permissionService.isUserAdmin(currentUser)) {
+            if ((!userOrganismPreference || !permissionService.hasAnyPermissions(currentUser)) && !permissionService.isUserBetterOrEqualRank(currentUser, GlobalPermissionEnum.INSTRUCTOR)) {
                 userObject.put(FeatureStringEnum.ERROR.value, "You do not have access to any organism on this server.  Please contact your administrator.")
             } else if (userOrganismPreference) {
                 userObject.put("tracklist", userOrganismPreference.nativeTrackList)
@@ -200,7 +276,7 @@ class UserController {
             }
             log.info "updateTrackListPreference"
 
-            UserOrganismPreference uop = preferenceService.getCurrentOrganismPreference(dataObject.getString(FeatureStringEnum.CLIENT_TOKEN.value))
+            UserOrganismPreference uop = preferenceService.getCurrentOrganismPreferenceInDB(dataObject.getString(FeatureStringEnum.CLIENT_TOKEN.value))
 
             uop.nativeTrackList = dataObject.get("tracklist")
             uop.save(flush: true)
@@ -225,13 +301,14 @@ class UserController {
     @Transactional
     def addUserToGroup() {
         JSONObject dataObject = permissionService.handleInput(request, params)
-        if (!permissionService.hasGlobalPermissions(dataObject, PermissionEnum.ADMINISTRATE)) {
+        UserGroup userGroup = UserGroup.findByName(dataObject.group)
+        User user = dataObject.userId ? User.findById(dataObject.userId) : User.findByUsername(dataObject.user)
+        if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN) && !permissionService.isGroupAdmin(userGroup, user)) {
             render status: HttpStatus.UNAUTHORIZED
             return
         }
         log.info "Adding user to group"
-        UserGroup userGroup = UserGroup.findByName(dataObject.group)
-        User user = dataObject.userId ? User.findById(dataObject.userId) : User.findByUsername(dataObject.user)
+
         user.addToUserGroups(userGroup)
         user.save(flush: true)
         log.info "Added user ${user.username} to group ${userGroup.name}"
@@ -249,13 +326,14 @@ class UserController {
     @Transactional
     def removeUserFromGroup() {
         JSONObject dataObject = permissionService.handleInput(request, params)
-        if (!permissionService.hasGlobalPermissions(dataObject, PermissionEnum.ADMINISTRATE)) {
+        UserGroup userGroup = UserGroup.findByName(dataObject.group)
+        User user = dataObject.userId ? User.findById(dataObject.userId) : User.findByUsername(dataObject.user)
+        if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN) && !permissionService.isGroupAdmin(userGroup, user)) {
             render status: HttpStatus.UNAUTHORIZED
             return
         }
         log.info "Removing user from group"
-        UserGroup userGroup = UserGroup.findByName(dataObject.group)
-        User user = dataObject.userId ? User.findById(dataObject.userId) : User.findByUsername(dataObject.user)
+
         user.removeFromUserGroups(userGroup)
         user.save(flush: true)
         log.info "Removed user ${user.username} from group ${userGroup.name}"
@@ -278,7 +356,8 @@ class UserController {
         try {
             log.info "Creating user"
             JSONObject dataObject = permissionService.handleInput(request, params)
-            if (!permissionService.hasGlobalPermissions(dataObject, PermissionEnum.ADMINISTRATE)) {
+            // allow instructor to create user
+            if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.INSTRUCTOR)) {
                 render status: HttpStatus.UNAUTHORIZED
                 return
             }
@@ -293,15 +372,22 @@ class UserController {
                     firstName: dataObject.firstName
                     , lastName: dataObject.lastName
                     , username: dataObject.email
-                    , metadata: dataObject.metadata ?: null
+                    // set metadata got from dataObject, need to convert to String
+                    , metadata: dataObject.metadata ? dataObject.metadata.toString() : null
                     , passwordHash: new Sha256Hash(dataObject.newPassword ?: dataObject.password).toHex()
             )
             user.save(insert: true)
-
-            String roleString = dataObject.role ?: UserService.USER
+            // to support webservice, get current user from session or input object
+            def currentUser = permissionService.getCurrentUser(dataObject)
+            // allow specify the metadata creator through webservice, if not specified, take current user as the creator
+            if (!user.getMetaData(FeatureStringEnum.CREATOR.value)) {
+                log.debug "creator does not exist, set current user as the creator"
+                user.addMetaData(FeatureStringEnum.CREATOR.value, currentUser.id.toString())
+            }
+            String roleString = dataObject.role ?: GlobalPermissionEnum.USER.name()
             Role role = Role.findByName(roleString.toUpperCase())
-            if(!role){
-                role = Role.findByName(UserService.USER)
+            if (!role) {
+                role = Role.findByName(GlobalPermissionEnum.USER.name())
             }
             log.debug "adding role: ${role}"
             user.addToRoles(role)
@@ -321,6 +407,65 @@ class UserController {
 
     }
 
+    @RestApiMethod(description = "Delete user", path = "/user/inactivateUser", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "userId", type = "long", paramType = RestApiParamType.QUERY, description = "User ID to delete")
+            , @RestApiParam(name = "userToDelete", type = "email", paramType = RestApiParamType.QUERY, description = "Username (email) to inactivate")
+    ])
+    @Transactional
+    def inactivateUser() {
+        try {
+            log.info "Removing user"
+            JSONObject dataObject = permissionService.handleInput(request, params)
+            User user = null
+            if (dataObject.has('userId')) {
+                user = User.findById(dataObject.userId)
+            }
+            // to support the webservice
+            if (!user && dataObject.has("userToDelete")) {
+                user = User.findByUsername(dataObject.userToDelete)
+            }
+
+            if (!user) {
+                def error = [error: 'The user does not exist']
+                log.error(error.error)
+                render error as JSON
+                return
+            }
+            String creatorMetaData = user.getMetaData(FeatureStringEnum.CREATOR.value)
+            // to support webservice, get current user from session or input object
+            def currentUser = permissionService.getCurrentUser(dataObject)
+
+            // instead of using !permissionService.isAdmin() because it only works for login user but doesn't work for webservice
+            // allow delete a user if the current user is global admin or the current user is the creator of the user
+            if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN) && !(creatorMetaData && currentUser.id.toString() == creatorMetaData)) {
+                //render status: HttpStatus.UNAUTHORIZED
+                def error = [error: 'not authorized to delete the user']
+                log.error(error.error)
+                render error as JSON
+                return
+            }
+
+            user.userGroups.each { it ->
+                it.removeFromUsers(user)
+            }
+            UserTrackPermission.deleteAll(UserTrackPermission.findAllByUser(user))
+            UserOrganismPermission.deleteAll(UserOrganismPermission.findAllByUser(user))
+            UserOrganismPreference.deleteAll(UserOrganismPreference.findAllByUser(user))
+
+            log.info "Inactivated user ${user.username}"
+
+            render new JSONObject() as JSON
+        } catch (e) {
+            log.error(e.fillInStackTrace())
+            JSONObject jsonObject = new JSONObject()
+            jsonObject.put(FeatureStringEnum.ERROR.value, "Failed to delete the user " + e.message)
+            render jsonObject as JSON
+        }
+    }
+
     @RestApiMethod(description = "Delete user", path = "/user/deleteUser", verb = RestApiVerb.POST)
     @RestApiParams(params = [
             @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
@@ -333,10 +478,6 @@ class UserController {
         try {
             log.info "Removing user"
             JSONObject dataObject = permissionService.handleInput(request, params)
-            if (!permissionService.hasGlobalPermissions(dataObject, PermissionEnum.ADMINISTRATE)) {
-                render status: HttpStatus.UNAUTHORIZED
-                return
-            }
             User user = null
             if (dataObject.has('userId')) {
                 user = User.findById(dataObject.userId)
@@ -345,6 +486,27 @@ class UserController {
             if (!user && dataObject.has("userToDelete")) {
                 user = User.findByUsername(dataObject.userToDelete)
             }
+
+            if (!user) {
+                def error = [error: 'The user does not exist']
+                log.error(error.error)
+                render error as JSON
+                return
+            }
+            String creatorMetaData = user.getMetaData(FeatureStringEnum.CREATOR.value)
+            // to support webservice, get current user from session or input object
+            def currentUser = permissionService.getCurrentUser(dataObject)
+
+            // instead of using !permissionService.isAdmin() because it only works for login user but doesn't work for webservice
+            // allow delete a user if the current user is global admin or the current user is the creator of the user
+            if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN) && !(creatorMetaData && currentUser.id.toString() == creatorMetaData)) {
+                //render status: HttpStatus.UNAUTHORIZED
+                def error = [error: 'not authorized to delete the user']
+                log.error(error.error)
+                render error as JSON
+                return
+            }
+
             user.userGroups.each { it ->
                 it.removeFromUsers(user)
             }
@@ -382,30 +544,59 @@ class UserController {
         try {
             log.info "Updating user"
             JSONObject dataObject = permissionService.handleInput(request, params)
-            if (!permissionService.sameUser(dataObject,request) && !permissionService.hasGlobalPermissions(dataObject, PermissionEnum.ADMINISTRATE)) {
-                render status: HttpStatus.UNAUTHORIZED
+            // to support webservice, which either provides userId or email. Sometimes only email is provided.
+            User user = null
+            if (dataObject.has('userId')) {
+                user = User.findById(dataObject.userId)
+            }
+            if (!user && dataObject.has("email")) {
+                user = User.findByUsername(dataObject.email)
+            }
+            if (!user) {
+                def error = [error: 'The user does not exist']
+                log.error(error.error)
+                render error as JSON
                 return
             }
-            User user = User.findById(dataObject.userId)
+            // to support webservice, get current user from session or input object
+            def currentUser = permissionService.getCurrentUser(dataObject)
+
+            String creatorMetaData = user.getMetaData(FeatureStringEnum.CREATOR.value)
+            // instead of using !permissionService.isAdmin() because it only works for login user but doesn't work for webservice
+            // allow update a user if the current user is global admin or the current user is the creator of the user
+            if (!permissionService.sameUser(dataObject, request) && !permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN) && !(creatorMetaData && currentUser.id.toString() == creatorMetaData)) {
+                //render status: HttpStatus.UNAUTHORIZED
+                def error = [error: 'not authorized to update the user']
+                log.error(error.error)
+                render error as JSON
+                return
+            }
+
             user.firstName = dataObject.firstName
             user.lastName = dataObject.lastName
             user.username = dataObject.email
-            user.metadata = dataObject.metadata ?: null
+            // if dataObject doesn't have metadata, then do not update the user metadata
+            user.metadata = dataObject.metadata ? dataObject.metadata.toString() : user.metadata
 
             if (dataObject.newPassword) {
                 user.passwordHash = new Sha256Hash(dataObject.newPassword).toHex()
             }
-
-            String roleString = dataObject.role
+            // allow accessing from webservice
+            // role may be not provided through webservice, so dataObject doesn't have 'role'
+            String roleString = null
+            if (dataObject.has('role')) {
+                roleString = dataObject.role
+            }
             Role currentRole = userService.getHighestRole(user)
-
-            if (!currentRole || !roleString.equalsIgnoreCase(currentRole.name)) {
+            // if currentRole doesn't exist and roleString is not null, or currentRole is different than roleString
+            if (!currentRole && roleString || (currentRole && roleString && !roleString.equalsIgnoreCase(currentRole.name))) {
                 if (currentRole) {
                     user.removeFromRoles(currentRole)
                 }
                 Role role = Role.findByName(roleString.toUpperCase())
                 user.addToRoles(role)
             }
+
             log.info "Updated user"
             user.save(flush: true)
             render new JSONObject() as JSON
@@ -426,8 +617,8 @@ class UserController {
     ])
     def getOrganismPermissionsForUser() {
         JSONObject dataObject = permissionService.handleInput(request, params)
-        User user = User.findById(dataObject.userId)
-
+        // to support webservice using either userId or username
+        User user = dataObject.userId ? User.findById(dataObject.userId as Long) : User.findByUsername(dataObject.username)
         List<UserOrganismPermission> userOrganismPermissionList = UserOrganismPermission.findAllByUser(user)
 
         render userOrganismPermissionList as JSON
@@ -462,9 +653,18 @@ class UserController {
         }
         UserOrganismPermission userOrganismPermission = UserOrganismPermission.findById(dataObject.id)
 
-        User user = dataObject.userId ? User.findById(dataObject.userId) : User.findByUsername(dataObject.user)
+        User user = dataObject.userId ? User.findById(dataObject.userId as Long) : User.findByUsername(dataObject.user)
 
-        Organism organism = Organism.findByCommonName(dataObject.organism)
+        log.debug "Finding organism by ${dataObject.organism}"
+        Organism organism = preferenceService.getOrganismForTokenInDB(dataObject.organism)
+        if (!organism) {
+            render([(FeatureStringEnum.ERROR.value): "Failed to find organism with ${dataObject.organism}"] as JSON)
+            return
+        }
+        if (!user) {
+            log.error("Failed to find user with ${dataObject.userId} OR ${dataObject.user}")
+            render([(FeatureStringEnum.ERROR.value): "Failed to find user with ${dataObject.userId} OR ${dataObject.user}"] as JSON)
+        }
         log.debug "found ${userOrganismPermission}"
         if (!userOrganismPermission) {
             userOrganismPermission = UserOrganismPermission.findByUserAndOrganism(user, organism)
@@ -474,7 +674,7 @@ class UserController {
             log.debug "creating new permissions! "
             userOrganismPermission = new UserOrganismPermission(
                     user: user
-                    , organism: Organism.findByCommonName(dataObject.organism)
+                    , organism: organism
                     , permissions: "[]"
             ).save(insert: true)
             log.debug "created new permissions! "
@@ -495,7 +695,7 @@ class UserController {
             permissionsArray.add(PermissionEnum.READ.name())
         }
 
-        if(permissionsArray.size()==0){
+        if (permissionsArray.size() == 0) {
             userOrganismPermission.delete(flush: true)
             render userOrganismPermission as JSON
             return
@@ -506,6 +706,33 @@ class UserController {
         log.info "Updated organism permissions for user ${user.username} and organism ${organism.commonName} and permissions ${permissionsArray.toString()}"
         render userOrganismPermission as JSON
 
+
+    }
+
+    @RestApiMethod(description = "Get creator metadata for user, returns creator userId as JSONObject", path = "/user/getUserCreator", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "email", type = "email", paramType = RestApiParamType.QUERY, description = "Email of the user")
+    ])
+    def getUserCreator() {
+        JSONObject dataObject = permissionService.handleInput(request, params)
+        if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN)) {
+            def error = [error: 'not authorized to view the metadata']
+            log.error(error.error)
+            render error as JSON
+            return
+        }
+        User user = User.findByUsername(dataObject.email)
+        if (!user) {
+            def error = [error: 'The user does not exist']
+            log.error(error.error)
+            render error as JSON
+            return
+        }
+        JSONObject metaData = new JSONObject()
+        metaData.creator = user.getMetaData(FeatureStringEnum.CREATOR.value)
+        render metaData as JSON
 
     }
 

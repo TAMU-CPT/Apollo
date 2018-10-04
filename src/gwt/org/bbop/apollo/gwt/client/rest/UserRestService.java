@@ -4,6 +4,7 @@ import com.google.gwt.core.client.GWT;
 import com.google.gwt.http.client.Request;
 import com.google.gwt.http.client.RequestCallback;
 import com.google.gwt.http.client.Response;
+import com.google.gwt.http.client.URL;
 import com.google.gwt.json.client.*;
 import com.google.gwt.json.client.JSONArray;
 import com.google.gwt.json.client.JSONObject;
@@ -47,7 +48,7 @@ public class UserRestService {
                     j = JSONParser.parseStrict(response.getText());
                 } catch (Exception e) {
                     GWT.log("Error parsing login response: "+e);
-                    Window.alert("Error parsing login response, reloading");
+//                    Window.alert("Error parsing login response, reloading");
                     Window.Location.reload();
                     return ;
                 }
@@ -65,16 +66,28 @@ public class UserRestService {
                 Bootbox.alert("Error loading organisms");
             }
         };
+
+        String passwordString = URL.encodeQueryString(password);
         JSONObject jsonObject = new JSONObject();
         jsonObject.put("operation", new JSONString("login"));
         jsonObject.put("username", new JSONString(username));
-        jsonObject.put("password", new JSONString(password));
+        jsonObject.put("password", new JSONString(passwordString));
         jsonObject.put("rememberMe", JSONBoolean.getInstance(rememberMe));
         login(requestCallback, jsonObject);
     }
 
     public static void loadUsers(RequestCallback requestCallback) {
-        RestService.sendRequest(requestCallback, "user/loadUsers/");
+        loadUsers(requestCallback,-1,-1,"","name",true);
+    }
+
+    public static void loadUsers(RequestCallback requestCallback, Integer start, Integer length, String searchNameString, String searchColumnString, Boolean sortAscending) {
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("start",new JSONNumber(start < 0 ? 0 : start));
+        jsonObject.put("length",new JSONNumber(length < 0 ? 20 : length));
+        jsonObject.put("name",new JSONString(searchNameString));
+        jsonObject.put("sortColumn",new JSONString(searchColumnString));
+        jsonObject.put("sortAscending",JSONBoolean.getInstance(sortAscending));
+        RestService.sendRequest(requestCallback, "user/loadUsers/",jsonObject);
     }
 
     public static void loadUsers(final List<UserInfo> userInfoList) {
@@ -137,6 +150,28 @@ public class UserRestService {
         RestService.sendRequest(requestCallback, "user/updateTrackListPreference", "data=" + jsonObject.toString());
     }
 
+    public static void inactivate(final List<UserInfo> userInfoList, UserInfo selectedUserInfo) {
+        RequestCallback requestCallback = new RequestCallback() {
+            @Override
+            public void onResponseReceived(Request request, Response response) {
+                JSONValue v=JSONParser.parseStrict(response.getText());
+                JSONObject o=v.isObject();
+                if(o.containsKey(FeatureStringEnum.ERROR.getValue())) {
+                    new ErrorDialog("Error Deleting User",o.get(FeatureStringEnum.ERROR.getValue()).isString().stringValue(),true,true);
+                }
+                else{
+                    loadUsers(userInfoList);
+                }
+            }
+
+            @Override
+            public void onError(Request request, Throwable exception) {
+                Bootbox.alert("Error deleting user: " + exception);
+            }
+        };
+        JSONObject jsonObject = selectedUserInfo.toJSON();
+        RestService.sendRequest(requestCallback, "user/inactivateUser", "data=" + jsonObject.toString());
+    }
 
     public static void deleteUser(final List<UserInfo> userInfoList, UserInfo selectedUserInfo) {
         RequestCallback requestCallback = new RequestCallback() {

@@ -9,10 +9,7 @@ import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.event.logical.shared.SelectionEvent;
 import com.google.gwt.event.logical.shared.SelectionHandler;
 import com.google.gwt.http.client.*;
-import com.google.gwt.json.client.JSONObject;
-import com.google.gwt.json.client.JSONParser;
-import com.google.gwt.json.client.JSONString;
-import com.google.gwt.json.client.JSONValue;
+import com.google.gwt.json.client.*;
 import com.google.gwt.uibinder.client.UiBinder;
 import com.google.gwt.uibinder.client.UiField;
 import com.google.gwt.uibinder.client.UiHandler;
@@ -26,9 +23,11 @@ import org.bbop.apollo.gwt.client.event.AnnotationInfoChangeEventHandler;
 import org.bbop.apollo.gwt.client.event.OrganismChangeEvent;
 import org.bbop.apollo.gwt.client.event.UserChangeEvent;
 import org.bbop.apollo.gwt.client.rest.OrganismRestService;
+import org.bbop.apollo.gwt.client.rest.RestService;
 import org.bbop.apollo.gwt.client.rest.SequenceRestService;
 import org.bbop.apollo.gwt.client.rest.UserRestService;
 import org.bbop.apollo.gwt.shared.FeatureStringEnum;
+import org.bbop.apollo.gwt.shared.GlobalPermissionEnum;
 import org.bbop.apollo.gwt.shared.PermissionEnum;
 import org.gwtbootstrap3.client.ui.*;
 import org.gwtbootstrap3.client.ui.Anchor;
@@ -38,7 +37,9 @@ import org.gwtbootstrap3.client.ui.constants.AlertType;
 import org.gwtbootstrap3.client.ui.constants.IconType;
 import org.gwtbootstrap3.extras.bootbox.client.Bootbox;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Created by ndunn on 12/18/14.
@@ -46,6 +47,7 @@ import java.util.*;
 public class MainPanel extends Composite {
 
 
+    private static final int DEFAULT_TAB_COUNT = 7;
 
     interface MainPanelUiBinder extends UiBinder<Widget, MainPanel> {
     }
@@ -59,7 +61,7 @@ public class MainPanel extends Composite {
     private static SequenceInfo currentSequence;
     private static Integer currentStartBp; // start base pair
     private static Integer currentEndBp; // end base pair
-    private static Map<String,List<String>> currentQueryParams ; // list of organisms for user
+    private static Map<String, List<String>> currentQueryParams; // list of organisms for user
     static boolean useNativeTracklist; // list native tracks
     private static List<OrganismInfo> organismInfoList = new ArrayList<>(); // list of organisms for user
     private static final String trackListViewString = "&tracklist=";
@@ -165,7 +167,7 @@ public class MainPanel extends Composite {
         initWidget(ourUiBinder.createAndBindUi(this));
         frame.getElement().setAttribute("id", frame.getName());
 
-        trackListToggle.setWidth(isCurrentUserAdmin()? "20px":"25px");
+        trackListToggle.setWidth(isCurrentUserAdmin() ? "20px" : "25px");
 
         Annotator.eventBus.addHandler(AnnotationInfoChangeEvent.TYPE, new AnnotationInfoChangeEventHandler() {
             @Override
@@ -220,14 +222,18 @@ public class MainPanel extends Composite {
         setUserNameForCurrentUser();
 
         String tabPreferenceString = Annotator.getPreference(FeatureStringEnum.CURRENT_TAB.getValue());
-        try {
-            int selectedTab = Integer.parseInt(tabPreferenceString);
-            detailTabs.selectTab(selectedTab);
-            if(selectedTab==TabPanelIndex.TRACKS.index){
-                trackPanel.reloadIfEmpty();
+        if(tabPreferenceString!=null){
+            try {
+                int selectedTab = Integer.parseInt(tabPreferenceString);
+                if(selectedTab<detailTabs.getWidgetCount()){
+                    detailTabs.selectTab(selectedTab);
+                    if (selectedTab == TabPanelIndex.TRACKS.index) {
+                        trackPanel.reloadIfEmpty();
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-        } catch (Exception e) {
-            e.printStackTrace();
         }
 
 
@@ -236,7 +242,63 @@ public class MainPanel extends Composite {
         reservedList.add("loc");
         reservedList.add("trackList");
 
+
         loginUser();
+
+        checkExtraTabs();
+    }
+
+    private void checkExtraTabs() {
+
+        removeExtraTabs();
+
+        RequestCallback requestCallback = new RequestCallback() {
+            @Override
+            public void onResponseReceived(Request request, Response response) {
+                JSONArray jsonArray = JSONParser.parseStrict(response.getText()).isArray();
+                for (int i = 0; i < jsonArray.size(); i++) {
+                    JSONObject jsonObject = jsonArray.get(i).isObject();
+                    final String title = jsonObject.get("title").isString().stringValue();
+                    if (jsonObject.containsKey("content")) {
+                        HTML htmlContent = new HTML(jsonObject.get("content").isString().stringValue());
+                        detailTabs.add(htmlContent, title);
+                    } else if (jsonObject.containsKey("url")) {
+                        final String url = jsonObject.get("url").isString().stringValue();
+                        Frame frame = new Frame(url);
+                        frame.setWidth("100%");
+                        frame.setHeight("100%");
+                        detailTabs.add(frame,title);
+
+                    } else {
+                        Bootbox.alert("Unsure how to process " + jsonObject.toString());
+                    }
+                }
+                String tabPreferenceString = Annotator.getPreference(FeatureStringEnum.CURRENT_TAB.getValue());
+                if(tabPreferenceString!=null){
+                    int selectedTab = 0 ;
+                    try {
+                        selectedTab = Integer.parseInt(tabPreferenceString);
+                        if(selectedTab >= detailTabs.getWidgetCount()){
+                            selectedTab = 0 ;
+                        }
+                    } catch (NumberFormatException e) {
+                        e.printStackTrace();
+                    }
+                    detailTabs.selectTab(selectedTab);
+                }
+            }
+
+            @Override
+            public void onError(Request request, Throwable exception) {
+            }
+        };
+        RestService.sendGetRequest(requestCallback, "annotator/getExtraTabs");
+    }
+
+    private void removeExtraTabs() {
+        for(int i = 0 ; i < detailTabs.getWidgetCount()-DEFAULT_TAB_COUNT ; i++){
+            detailTabs.remove(i+DEFAULT_TAB_COUNT);
+        }
     }
 
 
@@ -280,24 +342,22 @@ public class MainPanel extends Composite {
                 JSONObject sequenceInfoJson = JSONParser.parseStrict(response.getText()).isObject();
                 currentSequence = SequenceInfoConverter.convertFromJson(sequenceInfoJson);
 
-                if(start==null){
-                    currentStartBp = currentSequence.getStartBp()!=null ? currentSequence.getStartBp() : 0 ;
+                if (start == null) {
+                    currentStartBp = currentSequence.getStartBp() != null ? currentSequence.getStartBp() : 0;
+                } else {
+                    currentStartBp = start;
                 }
-                else{
-                    currentStartBp = start ;
-                }
-                if(end==null){
-                    currentEndBp = currentSequence.getEndBp()!=null ? currentSequence.getEndBp() : currentSequence.getLength() ;
-                }
-                else{
-                    currentEndBp = end ;
+                if (end == null) {
+                    currentEndBp = currentSequence.getEndBp() != null ? currentSequence.getEndBp() : currentSequence.getLength();
+                } else {
+                    currentEndBp = end;
                 }
                 sequenceSuggestBox.setText(currentSequence.getName());
 
-                Annotator.eventBus.fireEvent(new OrganismChangeEvent(OrganismChangeEvent.Action.LOADED_ORGANISMS, currentSequence.getName(),currentOrganism.getName()));
+                Annotator.eventBus.fireEvent(new OrganismChangeEvent(OrganismChangeEvent.Action.LOADED_ORGANISMS, currentSequence.getName(), currentOrganism.getName()));
 
                 if (updateViewer) {
-                    updateGenomicViewerForLocation(currentSequence.getName(),currentStartBp,currentEndBp,true,false);
+                    updateGenomicViewerForLocation(currentSequence.getName(), currentStartBp, currentEndBp, true, false);
                 }
                 if (blocking) {
                     loadingDialog.hide();
@@ -316,10 +376,9 @@ public class MainPanel extends Composite {
 
         handlingNavEvent = true;
 
-        if(start==null && end==null){
-            SequenceRestService.setCurrentSequenceForString(requestCallback, sequenceNameString,currentOrganism);
-        }
-        else{
+        if (start == null && end == null) {
+            SequenceRestService.setCurrentSequenceForString(requestCallback, sequenceNameString, currentOrganism);
+        } else {
             SequenceRestService.setCurrentSequenceAndLocation(requestCallback, sequenceNameString, start, end);
         }
 
@@ -328,9 +387,15 @@ public class MainPanel extends Composite {
 
     private void updatePermissionsForOrganism() {
         String globalRole = currentUser.getRole();
-        PermissionEnum highestPermission ;
+        PermissionEnum highestPermission;
         UserOrganismPermissionInfo userOrganismPermissionInfo = currentUser.getOrganismPermissionMap().get(currentOrganism.getName());
-        if (globalRole.equals("admin")) {
+        Map<String,UserOrganismPermissionInfo> infoMap = currentUser.getOrganismPermissionMap();
+        for(Map.Entry<String,UserOrganismPermissionInfo> entry : infoMap.entrySet()){
+            String entryKey = "";
+            entryKey += entry.getKey() + " " + entry.getValue().getId() + " " + entry.getValue().getHighestPermission().getDisplay();
+            GWT.log(entryKey);
+        }
+        if (globalRole.equals("admin") || globalRole.equals("instructor")) {
             highestPermission = PermissionEnum.ADMINISTRATE;
         } else {
             highestPermission = PermissionEnum.NONE;
@@ -441,7 +506,7 @@ public class MainPanel extends Composite {
     }
 
     public static void updateGenomicViewerForLocation(String selectedSequence, Integer minRegion, Integer maxRegion) {
-        updateGenomicViewerForLocation(selectedSequence, minRegion, maxRegion, false,false);
+        updateGenomicViewerForLocation(selectedSequence, minRegion, maxRegion, false, false);
     }
 
     /**
@@ -464,62 +529,56 @@ public class MainPanel extends Composite {
         currentEndBp = maxRegion;
 
 
-        String trackListString = Annotator.getRootUrl() ;
-        trackListString +=  Annotator.getClientToken() +"/";
+        String trackListString = Annotator.getRootUrl();
+        trackListString += Annotator.getClientToken() + "/";
         trackListString += "jbrowse/index.html?loc=";
-        trackListString += selectedSequence;
-        trackListString += URL.encodeQueryString(":") + minRegion + ".." + maxRegion;
+        trackListString += URL.encodeQueryString(selectedSequence+":") + minRegion + ".." + maxRegion;
 
         trackListString += getCurrentQueryParamsAsString();
 
 
         // if the trackList contains a string, it should over-ride and set?
-        if(trackListString.contains(trackListViewString)){
+        if (trackListString.contains(trackListViewString)) {
             // replace with whatever is in the toggle ? ? ?
             Boolean showTrackValue = trackPanel.trackListToggle.getValue();
 
-            String positiveString = trackListViewString+"1";
-            String negativeString = trackListViewString+"0";
-            if(trackListString.contains(positiveString) && !showTrackValue){
-                trackListString = trackListString.replace(positiveString,negativeString);
-            }
-            else
-            if(trackListString.contains(negativeString) && showTrackValue){
-                trackListString = trackListString.replace(negativeString,positiveString);
+            String positiveString = trackListViewString + "1";
+            String negativeString = trackListViewString + "0";
+            if (trackListString.contains(positiveString) && !showTrackValue) {
+                trackListString = trackListString.replace(positiveString, negativeString);
+            } else if (trackListString.contains(negativeString) && showTrackValue) {
+                trackListString = trackListString.replace(negativeString, positiveString);
             }
 
-            MainPanel.useNativeTracklist = showTrackValue ;
+            MainPanel.useNativeTracklist = showTrackValue;
         }
-        if(trackListString.contains(openAnnotatorPanelString)){
-            String positiveString = openAnnotatorPanelString+"1";
-            String negativeString = openAnnotatorPanelString+"0";
-            if(trackListString.contains(positiveString)){
-                trackListString = trackListString.replace(positiveString,"");
+        if (trackListString.contains(openAnnotatorPanelString)) {
+            String positiveString = openAnnotatorPanelString + "1";
+            String negativeString = openAnnotatorPanelString + "0";
+            if (trackListString.contains(positiveString)) {
+                trackListString = trackListString.replace(positiveString, "");
                 MainPanel.getInstance().openPanel();
-            }
-            else
-            if(trackListString.contains(negativeString)){
-                trackListString = trackListString.replace(negativeString,"");
+            } else if (trackListString.contains(negativeString)) {
+                trackListString = trackListString.replace(negativeString, "");
                 MainPanel.getInstance().closePanel();
             }
 
 
         }
         // otherwise we use the nativeTrackList
-        else{
+        else {
             trackListString += "&tracklist=" + (MainPanel.useNativeTracklist ? "1" : "0");
         }
 
-        if(!forceUrl && getInnerDiv()!=null){
+        if (!forceUrl && getInnerDiv() != null) {
             JSONObject commandObject = new JSONObject();
-            commandObject.put("url", new JSONString(selectedSequence+":"+currentStartBp+".."+currentEndBp));
-            MainPanel.getInstance().postMessage( "navigateToLocation",commandObject);
-        }
-        else{
+            commandObject.put("url", new JSONString(selectedSequence + ":" + currentStartBp + ".." + currentEndBp));
+            MainPanel.getInstance().postMessage("navigateToLocation", commandObject);
+        } else {
             frame.setUrl(trackListString);
         }
 
-        if(Window.Location.getParameter("tracks")!=null){
+        if (Window.Location.getParameter("tracks") != null) {
             String newURL = Window.Location.createUrlBuilder().removeParameter("tracks").buildString();
             newUrl(newURL);
         }
@@ -527,15 +586,15 @@ public class MainPanel extends Composite {
         currentQueryParams = Window.Location.getParameterMap();
     }
 
-    void postMessage(String message, JSONObject object){
-        object.put(FeatureStringEnum.DESCRIPTION.getValue(),new JSONString(message));
+    void postMessage(String message, JSONObject object) {
+        object.put(FeatureStringEnum.DESCRIPTION.getValue(), new JSONString(message));
         postMessage(object.getJavaScriptObject());
     }
 
     private native void postMessage(JavaScriptObject message)/*-{
         var genomeViewer = $wnd.document.getElementById("genomeViewer").contentWindow;
-        var domain = $wnd.location.protocol+"//"+$wnd.location.hostname +":"+$wnd.location.port  ;
-        genomeViewer.postMessage(message,domain);
+        var domain = $wnd.location.protocol + "//" + $wnd.location.hostname + ":" + $wnd.location.port;
+        genomeViewer.postMessage(message, domain);
     }-*/;
 
     private static native void newUrl(String newUrl)/*-{
@@ -545,40 +604,40 @@ public class MainPanel extends Composite {
 
     public static native Element getInnerDiv()/*-{
         var iframe = $doc.getElementById("genomeViewer");
-        var innerDoc = iframe.contentDocument ; // .contentWindow.document
-        if(!innerDoc){
-            innerDoc = iframe.contentWindow.document ;
+        var innerDoc = iframe.contentDocument; // .contentWindow.document
+        if (!innerDoc) {
+            innerDoc = iframe.contentWindow.document;
         }
         // this is the JBrowse div
         var genomeBrowser = innerDoc.getElementById("GenomeBrowser");
-        return genomeBrowser ;
+        return genomeBrowser;
     }-*/;
 
     private static String getCurrentQueryParamsAsString() {
         String returnString = "";
-        if(currentQueryParams==null){
+        if (currentQueryParams == null) {
             return returnString;
         }
 
-        for(String key : currentQueryParams.keySet()){
-            if(!reservedList.contains(key)){
-                for(String value : currentQueryParams.get(key)){
-                    returnString += "&"+key + "=" + value;
+        for (String key : currentQueryParams.keySet()) {
+            if (!reservedList.contains(key)) {
+                for (String value : currentQueryParams.get(key)) {
+                    returnString += "&" + key + "=" + value;
                 }
             }
         }
         return returnString;
     }
 
-    public static void updateGenomicViewer(boolean forceReload,boolean forceUrl) {
-        if(currentSequence==null) {
+    public static void updateGenomicViewer(boolean forceReload, boolean forceUrl) {
+        if (currentSequence == null) {
             GWT.log("Current sequence not set");
-            return ;
+            return;
         }
         if (currentStartBp != null && currentEndBp != null) {
-            updateGenomicViewerForLocation(currentSequence.getName(), currentStartBp, currentEndBp, forceReload,forceUrl);
+            updateGenomicViewerForLocation(currentSequence.getName(), currentStartBp, currentEndBp, forceReload, forceUrl);
         } else {
-            updateGenomicViewerForLocation(currentSequence.getName(), currentSequence.getStart(), currentSequence.getEnd(), forceReload,forceUrl);
+            updateGenomicViewerForLocation(currentSequence.getName(), currentSequence.getStart(), currentSequence.getEnd(), forceReload, forceUrl);
         }
     }
 
@@ -605,7 +664,7 @@ public class MainPanel extends Composite {
 
         if (currentOrganism != null) {
             updatePermissionsForOrganism();
-            updateGenomicViewer(true,true);
+            updateGenomicViewer(true, true);
         }
 
 
@@ -620,7 +679,7 @@ public class MainPanel extends Composite {
 
     public void getAppState() {
         String url = Annotator.getRootUrl() + "annotator/getAppState";
-        url += "?"+FeatureStringEnum.CLIENT_TOKEN.getValue() + "=" + Annotator.getClientToken();
+        url += "?" + FeatureStringEnum.CLIENT_TOKEN.getValue() + "=" + Annotator.getClientToken();
         RequestBuilder builder = new RequestBuilder(RequestBuilder.GET, URL.encode(url));
         builder.setHeader("Content-type", "application/x-www-form-urlencoded");
         final LoadingDialog loadingDialog = new LoadingDialog();
@@ -752,7 +811,7 @@ public class MainPanel extends Composite {
                 organismPanel.reload();
                 break;
             case 4:
-                userPanel.reload();
+                userPanel.reload(true);
                 break;
             case 5:
                 userGroupPanel.reload();
@@ -818,7 +877,7 @@ public class MainPanel extends Composite {
 
     public String generatePublicUrl() {
         String url2 = Annotator.getRootUrl();
-        url2 += currentOrganism.getId()+"/";
+        url2 += currentOrganism.getId() + "/";
         url2 += "jbrowse/index.html";
         if (currentStartBp != null) {
             url2 += "?loc=" + currentSequence.getName() + ":" + currentStartBp + ".." + currentEndBp;
@@ -969,7 +1028,7 @@ public class MainPanel extends Composite {
     }
 
     public static boolean hasCurrentUser() {
-        return currentUser!=null ;
+        return currentUser != null;
     }
 
     public static String getCurrentUserAsJson() {
@@ -986,8 +1045,27 @@ public class MainPanel extends Composite {
         return currentOrganism.toJSON().toString();
     }
 
+    /**
+     * Features array handed in
+     *
+     * @param parentName
+     */
+    public static Boolean viewInAnnotationPanel(String parentName) {
+        try {
+            annotatorPanel.sequenceList.setText("");
+            annotatorPanel.nameSearchBox.setText(parentName);
+            annotatorPanel.reload();
+            detailTabs.selectTab(TabPanelIndex.ANNOTATIONS.getIndex());
+            return true ;
+        } catch (Exception e) {
+            Bootbox.alert("Problem viewing annotation");
+            GWT.log("Problem viewing annotation "+parentName+ " "+ e.fillInStackTrace().toString());
+            return false ;
+        }
+    }
+
     @UiHandler("trackListToggle")
-    public void trackListToggleButtonHandler(ClickEvent event){
+    public void trackListToggleButtonHandler(ClickEvent event) {
         useNativeTracklist = !trackListToggle.isActive();
         trackPanel.updateTrackToggle(useNativeTracklist);
     }
@@ -1006,11 +1084,7 @@ public class MainPanel extends Composite {
         $wnd.getCurrentOrganism = $entry(@org.bbop.apollo.gwt.client.MainPanel::getCurrentOrganismAsJson());
         $wnd.getCurrentUser = $entry(@org.bbop.apollo.gwt.client.MainPanel::getCurrentUserAsJson());
         $wnd.getCurrentSequence = $entry(@org.bbop.apollo.gwt.client.MainPanel::getCurrentSequenceAsJson());
-        $wnd.getEmbeddedVersion = $entry(
-            function apolloEmbeddedVersion() {
-                return 'ApolloGwt-2.0';
-            }
-        );
+        $wnd.viewInAnnotationPanel = $entry(@org.bbop.apollo.gwt.client.MainPanel::viewInAnnotationPanel(Ljava/lang/String;));
     }-*/;
 
     private enum TabPanelIndex {
@@ -1024,14 +1098,37 @@ public class MainPanel extends Composite {
 
         private int index;
 
+        public int getIndex() {
+            return index;
+        }
+
         TabPanelIndex(int index) {
             this.index = index;
         }
 
     }
 
+    public boolean isCurrentUserOrganismAdmin() {
+        if(currentUser==null) return false ;
+        if(currentUser.getRole().equals(GlobalPermissionEnum.ADMIN.getLookupKey())) return true ;
+
+        UserOrganismPermissionInfo permissionInfo = currentUser.getOrganismPermissionMap().get(currentOrganism.getName());
+        if(permissionInfo!=null){
+            return permissionInfo.getHighestPermission().getRank()>=PermissionEnum.ADMINISTRATE.getRank();
+        }
+
+        return false ;
+    }
+
+    public boolean isCurrentUserInstructorOrBetter() {
+        if(currentUser!=null){
+            return currentUser.getRole().equals(GlobalPermissionEnum.ADMIN.getLookupKey()) || currentUser.getRole().equals(GlobalPermissionEnum.INSTRUCTOR.getLookupKey());
+        }
+        return false ;
+    }
+
     public boolean isCurrentUserAdmin() {
-        return (currentUser != null && currentUser.getRole().equals("admin"));
+        return (currentUser != null && currentUser.getRole().equals(GlobalPermissionEnum.ADMIN.getLookupKey()));
     }
 
     public UserInfo getCurrentUser() {
@@ -1061,7 +1158,14 @@ public class MainPanel extends Composite {
     public static SequencePanel getSequencePanel() {
         return sequencePanel;
     }
-    public static TrackPanel getTrackPanel() { return trackPanel ; }
+
+    public static UserPanel getUserPanel() {
+        return userPanel;
+    }
+
+    public static TrackPanel getTrackPanel() {
+        return trackPanel;
+    }
 
     public static SequenceInfo getCurrentSequence() {
         return currentSequence;
@@ -1069,8 +1173,8 @@ public class MainPanel extends Composite {
 
     SequenceInfo setCurrentSequenceAndEnds(SequenceInfo newSequence) {
         currentSequence = newSequence;
-        currentStartBp = currentSequence.getStartBp()!=null ? currentSequence.getStartBp() : 0 ;
-        currentEndBp = currentSequence.getEndBp()!=null ? currentSequence.getEndBp() : currentSequence.getLength() ;
+        currentStartBp = currentSequence.getStartBp() != null ? currentSequence.getStartBp() : 0;
+        currentEndBp = currentSequence.getEndBp() != null ? currentSequence.getEndBp() : currentSequence.getLength();
         currentSequence.setStartBp(currentStartBp);
         currentSequence.setEndBp(currentEndBp);
         return currentSequence;

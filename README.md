@@ -1,6 +1,6 @@
 # Apollo
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.268535.svg)](https://doi.org/10.5281/zenodo.268535)
-![Build](https://travis-ci.org/GMOD/Apollo.svg?branch=master)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1295754.svg)](https://doi.org/10.5281/zenodo.1295754)
+[![Build](https://travis-ci.org/GMOD/Apollo.svg?branch=master)](https://travis-ci.org/GMOD/Apollo?branch=master)
 [![Coverage](https://coveralls.io/repos/github/GMOD/Apollo/badge.svg?branch=master)](https://coveralls.io/github/GMOD/Apollo?branch=master)
 [![Documentation](https://readthedocs.org/projects/genomearchitect/badge/?version=latest)](https://genomearchitect.readthedocs.org/en/latest/)
 [![Chat at Gitter](https://badges.gitter.im/GMOD/Apollo.svg)](https://gitter.im/GMOD/Apollo?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)

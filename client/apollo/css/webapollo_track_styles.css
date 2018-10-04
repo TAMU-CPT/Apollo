@@ -22,11 +22,22 @@
     background-color: rgb(173, 92, 194);
 }
 
-.mRNA, 
-.plus-mRNA, 
-.minus-mRNA  {
-    height: 14px;
-    background-color: transparent;
+.bam-read{
+    height: 5px;
+    background-color: #AACDDC;
+    z-index: 8;
+}
+
+.plus-bam-read {
+    height: 5px;
+    background-color: #EC8B8B;
+    z-index: 8;
+}
+
+.minus-bam-read {
+    height: 5px;
+    background-color: #898FD8;
+    z-index: 8;
 }
 
 
@@ -353,26 +364,31 @@ div.annot-sequence  {
     top: 10%;
 }
 
-/* defaults for rendering aligned read from BAM files */
-.bam-read, 
-.plus-bam-read, 
-.minus-bam-read {
-    height: 5px; 
-    background-color: #AACDDC;
-    z-index: 8;
-}
-
 /* CIGAR string "M" subfeature, indicating "alignment match" (can be a sequence match or mismatch) of aligned sequence relative to viewed sequence */
-.cigarM, 
-.plus-cigarM, 
-.minus-cigarM  {
+.cigarM {
     height: 100%; 
     background-color: #1B8A99;
     z-index: 8;   /* rendered below most other subfeatures */
     min-width: 1px;
 }
 
+.plus-cigarM {
+    height: 100%;
+    /*background-color: #898FD8;*/
+    background-color: indianred;
+    /*background-color: blue;*/
+    z-index: 8;   /* rendered below most other subfeatures */
+    min-width: 1px;
+}
 
+.minus-cigarM  {
+    height: 100%;
+    /*background-color: #EC8B8B;*/
+    background-color: royalblue;
+    /*background-color: red;*/
+    z-index: 8;   /* rendered below most other subfeatures */
+    min-width: 1px;
+}
 
 /* CIGAR string "=" (or "E") subfeature, indicating exact sequence match of aligned sequence relative to viewed sequence */
 .cigarEQ, 
@@ -496,9 +512,9 @@ div.annot-sequence  {
        (div.sequence .dna-residues.forward-strand) and 
        (div.sequence .dna-residues.reverse-strand) styles
 */
-.Apollo .sequence-alteration.deletion, 
-.Apollo .sequence-alteration.plus-deletion,
-.Apollo .sequence-alteration.minus-deletion {
+.Apollo .sequence-alteration-artifact.deletion_artifact,
+.Apollo .sequence-alteration-artifact.plus-deletion_artifact,
+.Apollo .sequence-alteration-artifact.minus-deletion_artifact {
     border-style: solid;
     border-color: blue;
     border-width: 1px;
@@ -507,9 +523,9 @@ div.annot-sequence  {
     z-index: 20;  
 }
 
-.Apollo .sequence-alteration.insertion, 
-.Apollo .sequence-alteration.plus-insertion,
-.Apollo .sequence-alteration.minus-insertion {
+.Apollo .sequence-alteration-artifact.insertion_artifact,
+.Apollo .sequence-alteration-artifact.plus-insertion_artifact,
+.Apollo .sequence-alteration-artifact.minus-insertion_artifact {
     border-style: solid;
     border-color: green;
     border-width: 1px;
@@ -518,9 +534,9 @@ div.annot-sequence  {
     z-index: 20;  
 }
 
-.Apollo .sequence-alteration.substitution, 
-.Apollo .sequence-alteration.plus-substitution,
-.Apollo .sequence-alteration.minus-substitution {
+.Apollo .sequence-alteration-artifact.substitution_artifact,
+.Apollo .sequence-alteration-artifact.plus-substitution_artifact,
+.Apollo .sequence-alteration-artifact.minus-substitution_artifact {
     border-style: solid;
     border-color: blue;
     border-width: 1px;
@@ -564,6 +580,19 @@ div.annot-sequence  {
 .colorCds .cds-frame2 {
     background-color: #8080FF;
 }
+
+.colorCds .neg-cds-frame0 {
+    background-color: #8080FF;
+}
+
+.colorCds .neg-cds-frame1 {
+    background-color: #80FF80;
+}
+
+.colorCds .neg-cds-frame2 {
+    background-color: #FF8080;
+}
+
 
 .Dark.colorCds .dna-residues.cds-frame0 {
 	background-color: #902748
@@ -851,3 +880,39 @@ div.track_webapollo_view_track_annotsequencetrack div.track-label .track-close-b
     outline-width: 3px;
 }
 
+.sequence-start-protein {
+    background-color: yellow;
+    font-weight: bolder;
+	color: black;
+    display: inline ;
+}
+
+.sequence-stop-protein {
+    background-color: #3b4a20;
+    font-weight: bolder;
+	color: white;
+    display: inline ;
+}
+
+.insertion-variant,
+.deletion-variant,
+.snv-variant,
+.mnv-variant {
+    height: 16px;
+    border-width: 0px 0px 0px 0px;
+    border-style: none;
+    background-color: transparent;
+    z-index: 10;
+}
+
+.insertion-variant-render,
+.deletion-variant-render,
+.snv-variant-render,
+.mnv-variant-render {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 12px solid #ffa000;
+    background-color: transparent;
+}

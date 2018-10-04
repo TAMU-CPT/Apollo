@@ -97,12 +97,17 @@ return declare( [JBPlugin, HelpMixin],
         if (browser.cookie("Scheme")=="Dark") {
             domClass.add(win.body(), "Dark");
         }
-        if (browser.cookie("Scheme-Flat")=="Flat") {
-            domClass.add(win.body(), "Flat");
-        }
+
+        browser.cookie("colorCdsByFrame",browser.cookie("colorCdsByFrame")==null?!browser.config.overrideColorCdsByFrameTrue:browser.cookie("colorCdsByFrame"));
+
         if (browser.cookie("colorCdsByFrame")=="true") {
             domClass.add(win.body(), "colorCds");
         }
+
+        if (browser.cookie("Scheme-Flat")=="Flat") {
+            domClass.add(win.body(), "Flat");
+        }
+
         if(!browser.config.overrideApolloStyles) {
             domClass.add(win.body(), "Apollo");
         }
@@ -652,7 +657,7 @@ return declare( [JBPlugin, HelpMixin],
         css_frame_menu.addChild(new dijitMenuSeparator());
         css_frame_menu.addChild(
             new dijitMenuItem({
-                    label: "Non-Flat",
+                    label: "Grid",
                     onClick: function (event) {
                         browser.cookie("Scheme-Flat","");
                         domClass.remove(win.body(), "Flat");
@@ -662,7 +667,7 @@ return declare( [JBPlugin, HelpMixin],
         );
         css_frame_menu.addChild(
             new dijitMenuItem({
-                    label: "Flat",
+                    label: "No Grid",
                     onClick: function (event) {
                         browser.cookie("Scheme-Flat","Flat");
                         domClass.add(win.body(), "Flat");

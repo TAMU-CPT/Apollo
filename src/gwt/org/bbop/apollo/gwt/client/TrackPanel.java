@@ -36,9 +36,11 @@ import org.gwtbootstrap3.client.ui.constants.Pull;
 import org.gwtbootstrap3.client.ui.constants.Toggle;
 import org.gwtbootstrap3.extras.bootbox.client.Bootbox;
 import org.gwtbootstrap3.extras.toggleswitch.client.ui.ToggleSwitch;
-import org.gwtbootstrap3.extras.toggleswitch.client.ui.base.constants.SizeType;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 
 /**
@@ -79,6 +81,8 @@ public class TrackPanel extends Composite {
 
     private static Map<String, List<TrackInfo>> categoryMap = new TreeMap<>();
     private static Map<String, Boolean> categoryOpen = new TreeMap<>();
+    private static Map<TrackInfo, CheckBoxButton> checkBoxMap = new TreeMap<>();
+    private static Map<TrackInfo, TrackBodyPanel> trackBodyMap = new TreeMap<>();
 
     public TrackPanel() {
         exportStaticMethod();
@@ -87,7 +91,6 @@ public class TrackPanel extends Composite {
         initWidget(rootElement);
 
         dataGrid.setWidth("100%");
-
 
 
         Annotator.eventBus.addHandler(OrganismChangeEvent.TYPE, new OrganismChangeEventHandler() {
@@ -106,7 +109,7 @@ public class TrackPanel extends Composite {
             @Override
             public boolean execute() {
                 reload();
-                if (trackInfoList.size() == 0) {
+                if (trackInfoList.isEmpty()) {
                     return true;
                 }
                 return false;
@@ -115,7 +118,7 @@ public class TrackPanel extends Composite {
     }
 
     public void reloadIfEmpty() {
-        if (dataProvider.getList().size() == 0) {
+        if (dataProvider.getList().isEmpty()) {
             loadTracks(7000);
         }
     }
@@ -199,55 +202,68 @@ public class TrackPanel extends Composite {
 
         private final TrackInfo trackInfo;
 
+
         public TrackBodyPanel(TrackInfo trackInfo) {
             this.trackInfo = trackInfo;
             decorate();
         }
 
         private void decorate() {
-            HTML label = new HTML(trackInfo.getName());
-            label.addStyleName("track-link");
-//            final CheckBox selected = new CheckBox();
-            final ToggleSwitch selected = new ToggleSwitch();
-            selected.setSize(SizeType.MINI);
-            selected.setAnimate(false);
-            selected.setOffText("Show");
-            selected.setOnText("Hide");
-            selected.setValue(trackInfo.getVisible());
-            selected.addStyleName("track-slider");
-            setPaddingTop(2);
-            setPaddingBottom(2);
 
-            add(selected);
-            add(label);
-            setWidth("100%");
+            InputGroup inputGroup = new InputGroup();
+            addStyleName("track-entry");
+            final CheckBoxButton selected = new CheckBoxButton();
+            selected.setValue(trackInfo.getVisible());
+
+            InputGroupButton inputGroupButton = new InputGroupButton();
+            inputGroupButton.add(selected);
+            inputGroup.add(inputGroupButton);
+
+            InputGroupAddon label = new InputGroupAddon();
+            label.add(new HTML(trackInfo.getName()));
+            label.addStyleName("text-left");
+            inputGroup.add(label);
+
+            add(inputGroup);
 
             selected.addValueChangeHandler(new ValueChangeHandler<Boolean>() {
                 @Override
                 public void onValueChange(ValueChangeEvent<Boolean> event) {
-                    JSONObject jsonObject = trackInfo.getPayload();
                     Boolean value = selected.getValue();
-                    trackInfo.setVisible(value);
-                    if (value) {
-                        jsonObject.put("command", new JSONString("show"));
-                    } else {
-                        jsonObject.put("command", new JSONString("hide"));
-                    }
-                    MainPanel.getInstance().postMessage("handleTrackVisibility", jsonObject);
+                    handleSelect(value);
                 }
             });
-            label.addClickHandler(new ClickHandler() {
+
+            checkBoxMap.put(trackInfo, selected);
+
+            label.addStyleName("track-link");
+            label.setWidth("100%");
+
+            label.addDomHandler(new ClickHandler() {
                 @Override
                 public void onClick(ClickEvent event) {
                     MainPanel.getTrackPanel().setTrackInfo(trackInfo);
                 }
-            });
+            }, ClickEvent.getType());
+        }
+
+        public void handleSelect(Boolean value) {
+            JSONObject jsonObject = trackInfo.getPayload();
+            trackInfo.setVisible(value);
+            if (value) {
+                jsonObject.put("command", new JSONString("show"));
+            } else {
+                jsonObject.put("command", new JSONString("hide"));
+            }
+            MainPanel.getInstance().postMessage("handleTrackVisibility", jsonObject);
         }
     }
 
-    public void  clear(){
+    public void clear() {
         categoryMap.clear();
         categoryOpen.clear();
+        checkBoxMap.clear();
+        trackBodyMap.clear();
         dataGrid.clear();
         dataGrid.add(new org.gwtbootstrap3.client.ui.Label("Loading..."));
     }
@@ -256,20 +272,20 @@ public class TrackPanel extends Composite {
         dataGrid.clear();
         // populate the map of categories
         for (TrackInfo trackInfo : trackInfoList) {
-            if( !isReferenceSequence(trackInfo) && !isAnnotationTrack(trackInfo)){
+            if (!isReferenceSequence(trackInfo) && !isAnnotationTrack(trackInfo)) {
                 categoryMap.put(trackInfo.getStandardCategory(), new ArrayList<TrackInfo>());
-                if(!categoryOpen.containsKey(trackInfo.getStandardCategory())){
-                    categoryOpen.put(trackInfo.getStandardCategory(),false);
+                if (!categoryOpen.containsKey(trackInfo.getStandardCategory())) {
+                    categoryOpen.put(trackInfo.getStandardCategory(), false);
                 }
             }
         }
 
-        if(categoryOpen.size()==1){
-            categoryOpen.put(categoryOpen.keySet().iterator().next(),true);
+        if (categoryOpen.size() == 1) {
+            categoryOpen.put(categoryOpen.keySet().iterator().next(), true);
         }
 
         for (TrackInfo trackInfo : filteredTrackInfoList) {
-            if( !isReferenceSequence(trackInfo) && !isAnnotationTrack(trackInfo)) {
+            if (!isReferenceSequence(trackInfo) && !isAnnotationTrack(trackInfo)) {
                 List<TrackInfo> trackInfoList = categoryMap.get(trackInfo.getStandardCategory());
                 trackInfoList.add(trackInfo);
                 categoryMap.put(trackInfo.getStandardCategory(), trackInfoList);
@@ -279,73 +295,102 @@ public class TrackPanel extends Composite {
 
         // build up categories, first, processing any / all levels
         int count = 1;
-        for (final String key : categoryMap.keySet()) {
-            List<TrackInfo> trackInfoList = categoryMap.get(key);
-
-//            Collections.sort(trackInfoList, new Comparator<TrackInfo>() {
-//                @Override
-//                public int compare(TrackInfo o1, TrackInfo o2) {
-//                    return o1.getLabel().compareTo(o2.getLabel());
-//                }
-//            });
-
-            // if this is a root panel
-            Panel panel = new Panel();
-
-            PanelHeader panelHeader = null ;
-            Badge totalBadge = null ;
-            // if we only have a single uncategorized category, then do not add a header
-            if(categoryOpen.size()!=1 || (!key.equals(TrackInfo.TRACK_UNCATEGORIZED) && categoryOpen.size()==1  )){
-                panelHeader = new PanelHeader();
-                panelHeader.setPaddingTop(2);
-                panelHeader.setPaddingBottom(2);
-                panelHeader.setDataToggle(Toggle.COLLAPSE);
-                Heading heading = new Heading(HeadingSize.H4, key);
-                panelHeader.add(heading);
-                heading.addStyleName("track-header");
-                totalBadge = new Badge(trackInfoList.size() + "");
-                totalBadge.setPull(Pull.RIGHT);
-                panelHeader.add(totalBadge);
-                panel.add(panelHeader);
+        // handle the uncategorized first
+        if (categoryMap.containsKey(TrackInfo.TRACK_UNCATEGORIZED)) {
+            List<TrackInfo> trackInfoList = categoryMap.get(TrackInfo.TRACK_UNCATEGORIZED);
+            for (TrackInfo trackInfo : trackInfoList) {
+                TrackBodyPanel panelBody = new TrackBodyPanel(trackInfo);
+                dataGrid.add(panelBody);
             }
-
-
-
-            final PanelCollapse panelCollapse = new PanelCollapse();
-            panelCollapse.setIn(categoryOpen.get(key));
-            panelCollapse.setId("collapse" + count++);
-            panel.add(panelCollapse);
-            panelCollapse.setWidth("100%");
-
-            if(panelHeader!=null) panelHeader.setDataTarget("#" + panelCollapse.getId());
-
-            panelCollapse.addHiddenHandler(new HiddenHandler() {
-                @Override
-                public void onHidden(HiddenEvent event) {
-                    categoryOpen.put(key,false);
-                }
-            });
-
-            panelCollapse.addShowHandler(new ShowHandler() {
-                @Override
-                public void onShow(ShowEvent showEvent) {
-                    categoryOpen.put(key,true);
-                }
-            });
-
-            Integer numVisible = 0 ;
-            if (trackInfoList.size() > 0) {
-                for (TrackInfo trackInfo : trackInfoList) {
-                    if(trackInfo.getVisible()) ++numVisible;
-                    TrackBodyPanel panelBody = new TrackBodyPanel(trackInfo);
-                    panelCollapse.add(panelBody);
-                }
-            }
-            if(totalBadge!=null) totalBadge.setText(numVisible + "/" + trackInfoList.size());
-
-
-            dataGrid.add(panel);
         }
+
+
+        for (final String key : categoryMap.keySet()) {
+            if (!key.equals(TrackInfo.TRACK_UNCATEGORIZED)) {
+
+                final List<TrackInfo> trackInfoList = categoryMap.get(key);
+
+                // if this is a root panel
+                Panel panel = new Panel();
+
+                PanelHeader panelHeader = null;
+                final CheckBoxButton panelSelect = new CheckBoxButton();
+                panelSelect.addStyleName("panel-select");
+                panelSelect.setPull(Pull.RIGHT);
+                Badge totalBadge = null;
+
+                // if we only have a single uncategorized category, then do not add a header
+                if (categoryOpen.size() != 1 || (!key.equals(TrackInfo.TRACK_UNCATEGORIZED) && categoryOpen.size() == 1)) {
+                    panelHeader = new PanelHeader();
+                    panelHeader.setPaddingTop(2);
+                    panelHeader.setPaddingBottom(2);
+                    panelHeader.setDataToggle(Toggle.COLLAPSE);
+                    Heading heading = new Heading(HeadingSize.H4, key);
+                    panelHeader.add(heading);
+                    heading.addStyleName("track-header");
+                    totalBadge = new Badge(Integer.toString(trackInfoList.size()));
+                    totalBadge.setPull(Pull.RIGHT);
+                    panelHeader.add(panelSelect);
+                    panelHeader.add(totalBadge);
+                    panel.add(panelHeader);
+                }
+
+
+                final PanelCollapse panelCollapse = new PanelCollapse();
+                panelCollapse.setIn(categoryOpen.get(key));
+                panelCollapse.setId("collapse" + count++);
+                panel.add(panelCollapse);
+                panelCollapse.setWidth("100%");
+
+                if (panelHeader != null) panelHeader.setDataTarget("#" + panelCollapse.getId());
+
+                panelCollapse.addHiddenHandler(new HiddenHandler() {
+                    @Override
+                    public void onHidden(HiddenEvent event) {
+                        categoryOpen.put(key, false);
+                    }
+                });
+
+                panelCollapse.addShowHandler(new ShowHandler() {
+                    @Override
+                    public void onShow(ShowEvent showEvent) {
+                        categoryOpen.put(key, true);
+                    }
+                });
+
+                Integer numVisible = 0;
+                if (!trackInfoList.isEmpty()) {
+                    for (TrackInfo trackInfo : trackInfoList) {
+                        if (trackInfo.getVisible()) ++numVisible;
+                        TrackBodyPanel panelBody = new TrackBodyPanel(trackInfo);
+                        trackBodyMap.put(trackInfo, panelBody);
+                        panelCollapse.add(panelBody);
+                    }
+                    if (numVisible == 0) {
+                        panelSelect.setValue(false);
+                    } else if (numVisible == trackInfoList.size()) {
+                        panelSelect.setValue(true);
+                    }
+                    panelSelect.addValueChangeHandler(new ValueChangeHandler<Boolean>() {
+                        @Override
+                        public void onValueChange(ValueChangeEvent<Boolean> event) {
+                            Boolean value = panelSelect.getValue();
+                            for (TrackInfo trackInfo : trackInfoList) {
+                                checkBoxMap.get(trackInfo).setValue(value);
+                                trackBodyMap.get(trackInfo).handleSelect(value);
+                            }
+                            categoryOpen.put(key, true);
+                        }
+                    });
+                }
+                if (totalBadge != null) {
+                    totalBadge.setText(numVisible + "/" + trackInfoList.size());
+                }
+
+                dataGrid.add(panel);
+            }
+        }
+
     }
 
     private static PanelBody getPanelBodyForCategory(String key) {
@@ -381,7 +426,7 @@ public class TrackPanel extends Composite {
     }
 
     public List<String> getTrackList() {
-        if (trackInfoList.size() == 0) {
+        if (trackInfoList.isEmpty()) {
             reload();
         }
         List<String> trackListArray = new ArrayList<>();

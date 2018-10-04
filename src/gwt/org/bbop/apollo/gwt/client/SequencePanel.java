@@ -30,7 +30,6 @@ import org.bbop.apollo.gwt.client.event.OrganismChangeEventHandler;
 import org.bbop.apollo.gwt.client.event.UserChangeEvent;
 import org.bbop.apollo.gwt.client.event.UserChangeEventHandler;
 import org.bbop.apollo.gwt.client.resources.TableResources;
-import org.bbop.apollo.gwt.client.rest.OrganismRestService;
 import org.bbop.apollo.gwt.client.rest.SequenceRestService;
 import org.bbop.apollo.gwt.shared.PermissionEnum;
 import org.gwtbootstrap3.client.ui.Button;
@@ -44,7 +43,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-import static org.bbop.apollo.gwt.client.MainPanel.sequenceSuggestBox;
 
 /**
  * Created by ndunn on 12/17/14.
@@ -83,6 +81,8 @@ public class SequencePanel extends Composite {
     HTML sequenceLength;
     @UiField
     Button exportGff3Button;
+    @UiField
+    Button exportVcfButton;
     @UiField
     Button exportFastaButton;
     @UiField
@@ -325,15 +325,19 @@ public class SequencePanel extends Composite {
         dataGrid.setVisibleRangeAndClearData(dataGrid.getVisibleRange(), true);
     }
 
-    @UiHandler(value = {"exportGff3Button", "exportFastaButton", "exportChadoButton"})
+    @UiHandler(value = {"exportGff3Button", "exportVcfButton", "exportFastaButton", "exportChadoButton"})
     public void handleExportTypeChanged(ClickEvent clickEvent) {
         exportGff3Button.setType(ButtonType.DEFAULT);
+        exportVcfButton.setType(ButtonType.DEFAULT);
         exportFastaButton.setType(ButtonType.DEFAULT);
         exportChadoButton.setType(ButtonType.DEFAULT);
         Button selectedButton = (Button) clickEvent.getSource();
         switch (selectedButton.getText()) {
             case "GFF3":
                 exportGff3Button.setType(ButtonType.PRIMARY);
+                break;
+            case "VCF":
+                exportVcfButton.setType(ButtonType.PRIMARY);
                 break;
             case "FASTA":
                 exportFastaButton.setType(ButtonType.PRIMARY);
@@ -381,12 +385,13 @@ public class SequencePanel extends Composite {
         String type = null;
         if (exportGff3Button.getType().equals(ButtonType.DANGER.PRIMARY)) {
             type = exportGff3Button.getText();
+        } else if (exportVcfButton.getType().equals(ButtonType.DANGER.PRIMARY)) {
+            type = exportVcfButton.getText();
         } else if (exportFastaButton.getType().equals(ButtonType.DANGER.PRIMARY)) {
             type = exportFastaButton.getText();
         } else if (exportChadoButton.getType().equals(ButtonType.DANGER.PRIMARY)) {
             type = exportChadoButton.getText();
         }
-//        GWT.log("Type selected is " + type);
 
         ExportPanel exportPanel = new ExportPanel(organismInfo, type, exportAll, sequenceInfoList);
         exportPanel.show();

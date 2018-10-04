@@ -2,8 +2,10 @@ package org.bbop.apollo
 
 import grails.converters.JSON
 import grails.transaction.Transactional
+import org.bbop.apollo.gwt.shared.PermissionEnum
 import org.codehaus.groovy.grails.web.json.JSONArray
 import org.codehaus.groovy.grails.web.json.JSONObject
+import org.restapidoc.annotation.RestApi
 import org.restapidoc.annotation.RestApiMethod
 import org.restapidoc.annotation.RestApiParam
 import org.restapidoc.annotation.RestApiParams
@@ -12,6 +14,7 @@ import org.restapidoc.pojo.RestApiVerb
 
 import static org.springframework.http.HttpStatus.*
 
+@RestApi(name = "History Services", description = "Methods for querying history")
 @Transactional(readOnly = true)
 class FeatureEventController {
 
@@ -36,14 +39,15 @@ class FeatureEventController {
             @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
             , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
             , @RestApiParam(name = "date", type = "Date", paramType = RestApiParamType.QUERY, description = "Date to query yyyy-MM-dd:HH:mm:ss or yyyy-MM-dd")
-            , @RestApiParam(name = "afterDate", type = "Boolean", paramType = RestApiParamType.QUERY, description = "Search after the given date.")
+            , @RestApiParam(name = "afterDate", type = "Boolean", paramType = RestApiParamType.QUERY, description = "Search after or on the given date.")
+            , @RestApiParam(name = "beforeDate", type = "Boolean", paramType = RestApiParamType.QUERY, description = "Search before or on the given date.")
             , @RestApiParam(name = "max", type = "Integer", paramType = RestApiParamType.QUERY, description = "Max to return")
             , @RestApiParam(name = "sort", type = "String", paramType = RestApiParamType.QUERY, description = "Sort parameter (lastUpdated).  See FeatureEvent object/table.")
             , @RestApiParam(name = "order", type = "String", paramType = RestApiParamType.QUERY, description = "desc/asc sort order by sort param")
     ])
     def findChanges() {
         JSONObject inputObject = permissionService.handleInput(request, params)
-        if (!permissionService.hasGlobalPermissions(inputObject, org.bbop.apollo.gwt.shared.PermissionEnum.ADMINISTRATE)) {
+        if (!permissionService.hasGlobalPermissions(inputObject, org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN)) {
             render status: org.springframework.http.HttpStatus.UNAUTHORIZED
             return
         }
@@ -81,9 +85,8 @@ class FeatureEventController {
      */
     def report(Integer max) {
 
-        log.error "${params}"
-
         params.max = Math.min(max ?: 15, 100)
+        def organisms = permissionService.getOrganismsWithMinimumPermission(permissionService.currentUser,PermissionEnum.ADMINISTRATE)
 
         def c = Feature.createCriteria()
 
@@ -111,8 +114,12 @@ class FeatureEventController {
                         }
                     }
                 }
-            } else if (params.sort == "lastUpdated") {
+            }
+            else if (params.sort == "lastUpdated") {
                 order('lastUpdated', params.order)
+            }
+            else if (params.sort == "dateCreated") {
+                order('dateCreated', params.order)
             }
 
             if (params.ownerName && params.ownerName != "null") {
@@ -132,6 +139,15 @@ class FeatureEventController {
                     }
                 }
             }
+            else{
+                featureLocations {
+                    sequence {
+                        organism {
+                            inList('commonName', organisms.commonName as List)
+                        }
+                    }
+                }
+            }
             if (params.sequenceName && params.sequenceName != "null") {
                 featureLocations {
                     sequence {
@@ -140,14 +156,48 @@ class FeatureEventController {
                 }
             }
 
-            log.debug "afterDateDate ${params.afterDateDate}"
-            log.debug "beforeDate ${params.beforeDate}"
             if (params.afterDate) {
-                gte('dateCreated', params.afterDate)
+                Calendar calendar = GregorianCalendar.getInstance()
+                calendar.setTime(params.afterDate)
+                calendar.set(Calendar.HOUR,0)
+                calendar.set(Calendar.MINUTE,0)
+                calendar.set(Calendar.SECOND,0)
+                gte('lastUpdated', calendar.getTime())
             }
             if (params.beforeDate) {
-                lte('dateCreated', params.beforeDate)
+                Date beforeDate = params.beforeDate
+                // set the before date to the very end of day
+                Calendar calendar = GregorianCalendar.getInstance()
+                calendar.setTime(params.beforeDate)
+                calendar.set(Calendar.HOUR,23)
+                calendar.set(Calendar.MINUTE,59)
+                calendar.set(Calendar.SECOND,59)
+                lte('lastUpdated', calendar.getTime())
             }
+            log.debug "afterDateDate ${params.afterDateDate}"
+            log.debug "beforeDate ${params.beforeDate}"
+
+
+            if (params.dateCreatedAfterDate) {
+                Calendar calendar = GregorianCalendar.getInstance()
+                calendar.setTime(params.dateCreatedAfterDate)
+                calendar.set(Calendar.HOUR,0)
+                calendar.set(Calendar.MINUTE,0)
+                calendar.set(Calendar.SECOND,0)
+                gte('dateCreated', calendar.getTime())
+            }
+            if (params.dateCreatedBeforeDate) {
+                Date dateCreatedBeforeDate = params.dateCreatedBeforeDate
+                // set the before date to the very end of day
+                Calendar calendar = GregorianCalendar.getInstance()
+                calendar.setTime(params.dateCreatedBeforeDate)
+                calendar.set(Calendar.HOUR,23)
+                calendar.set(Calendar.MINUTE,59)
+                calendar.set(Calendar.SECOND,59)
+                lte('dateCreated', calendar.getTime())
+            }
+            log.debug "dateCreatedAfterDateDate ${params.dateCreatedAfterDateDate}"
+            log.debug "dateCreatedBeforeDate ${params.dateCreatedBeforeDate}"
 
 
             'in'('class', requestHandlingService.viewableAnnotationList)
@@ -164,9 +214,11 @@ class FeatureEventController {
         Date veryOldDate = today.minus(20 * 365)  // 20 years back
         Date beforeDate = params.beforeDate ?: today
         Date afterDate = params.afterDate ?: veryOldDate
-        println "after date ${afterDate}"
+        Date dateCreatedBeforeDate = params.dateCreatedBeforeDate ?: today
+        Date dateCreatedAfterDate = params.dateCreatedAfterDate ?: veryOldDate
 
-        render view: "report", model: [afterDate: afterDate, beforeDate: beforeDate, sequenceName: params.sequenceName, features: list, featureCount: list.totalCount, organismName: params.organismName, featureTypes: featureTypes, featureType: params.featureType, ownerName: params.ownerName, filters: filters, sort: params.sort]
+
+        render view: "report", model: [organisms: organisms,dateCreatedAfterDate: dateCreatedAfterDate, dateCreatedBeforeDate: dateCreatedBeforeDate,afterDate: afterDate, beforeDate: beforeDate, sequenceName: params.sequenceName, features: list, featureCount: list.totalCount, organismName: params.organismName, featureTypes: featureTypes, featureType: params.featureType, ownerName: params.ownerName, filters: filters, sort: params.sort]
     }
 
     def index(Integer max) {
