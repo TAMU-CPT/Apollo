@@ -1164,12 +1164,16 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
         String longestPeptide = "";
         int bestStartIndex = -1;
         int bestStopIndex = -1;
+        int startIndex = -1;
+        int stopIndex = -1;
+        boolean partialStart = false;
         boolean partialStop = false;
+
 
         if (mrna.length() > 3) {
             for (String startCodon : translationTable.getStartCodons()) {
                 // find the first start codon
-                int startIndex = mrna.indexOf(startCodon);
+                startIndex = mrna.indexOf(startCodon);
                 while (startIndex >= 0) {
                     log.debug "StartIndex ${startIndex} ${startCodon} ${transcript}"
                     String mrnaSubstring = mrna.substring(startIndex)
