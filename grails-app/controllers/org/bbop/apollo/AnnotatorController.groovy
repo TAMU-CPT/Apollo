@@ -75,10 +75,10 @@ class AnnotatorController {
                 throw new RuntimeException("User does have permissions to access any organisms.")
             }
 
-            if(params.uuid){
+            if (params.uuid) {
                 Feature feature = Feature.findByUniqueName(params.uuid)
                 FeatureLocation featureLocation = feature.featureLocation
-                params.loc = featureLocation.sequence.name + ":" + featureLocation.fmin +".." + featureLocation.fmax
+                params.loc = featureLocation.sequence.name + ":" + featureLocation.fmin + ".." + featureLocation.fmax
                 organism = featureLocation.sequence.organism
             }
 
@@ -90,9 +90,10 @@ class AnnotatorController {
 
             log.debug "loading organism: ${organism}"
             preferenceService.setCurrentOrganism(permissionService.currentUser, organism, clientToken)
-            if (params.loc) {
-                String location = params.loc
-                String[] splitString = location.split(":")
+            String location = params.loc
+            // assume that the lookup is a symbol lookup value and not a location
+            if (location && location.contains(':') && location.contains('..')) {
+                String[] splitString = location.split(':')
                 log.debug "splitString : ${splitString}"
                 String sequenceString = splitString[0]
                 Sequence sequence = Sequence.findByOrganismAndName(organism, sequenceString)
@@ -112,8 +113,9 @@ class AnnotatorController {
 
                 preferenceService.setCurrentSequenceLocation(sequence.name, fmin, fmax, clientToken)
             }
+        }
 
-        } catch (e) {
+        catch (e) {
             log.error "problem parsing the string ${e}"
         }
 
@@ -129,18 +131,18 @@ class AnnotatorController {
             }
         }
 
-        if (queryParamString.contains("http://") || queryParamString.contains("https://") || queryParamString.contains("ftp://")) {
+        if (queryParamString.contains("http://") || queryParamString.contains("https://") ||
+                queryParamString.contains("ftp://")) {
             redirect uri: "${request.contextPath}/annotator/index?clientToken=" + clientToken + queryParamString
-        }
-        else {
+        } else {
             redirect uri: "/annotator/index?clientToken=" + clientToken + queryParamString
         }
 
     }
 
-    /**
-     * Loads the main annotator panel.
-     */
+/**
+ * Loads the main annotator panel.
+ */
     @NotTransactional
     def index() {
         log.debug "loading the index"
@@ -150,7 +152,7 @@ class AnnotatorController {
     }
 
     @NotTransactional
-    def getExtraTabs(){
+    def getExtraTabs() {
         def extraTabs = configWrapperService.extraTabs
         render extraTabs as JSON
     }
@@ -158,20 +160,21 @@ class AnnotatorController {
     @NotTransactional
     def adminPanel() {
         if (permissionService.checkPermissions(PermissionEnum.ADMINISTRATE)) {
-            Integer highestGlobalRoleRank = permissionService.currentUser.roles.sort(){ a,b -> a.rank <=> b.rank}.first().rank // should return the highest either way
+            Integer highestGlobalRoleRank = permissionService.currentUser.roles.sort() { a, b -> a.rank <=> b.rank }.first().rank
+            // should return the highest either way
 //            permissionService.getPermissionsForUser(permissionService.currentUser)
 
             def administativePanel = grailsApplication.config.apollo.administrativePanel
-            [links: administativePanel,highestRank:highestGlobalRoleRank,roles:Role.all]
+            [links: administativePanel, highestRank: highestGlobalRoleRank, roles: Role.all]
         } else {
             render text: "Unauthorized"
         }
     }
 
-    /**
-     * updates shallow properties of gene / feature
-     * @return
-     */
+/**
+ * updates shallow properties of gene / feature
+ * @return
+ */
     @RestApiMethod(description = "Update shallow feature properties", path = "/annotator/updateFeature", verb = RestApiVerb.POST)
     @RestApiParams(params = [
             @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
@@ -272,20 +275,20 @@ class AnnotatorController {
         return jsonFeatureContainer;
     }
 
-    /**
-     * Not really setup for a REST service as is specific to the Annotator Panel interface.
-     * If a user has read permissions this method will work.
-     * @param sequenceName
-     * @param request
-     * @param annotationName
-     * @param type
-     * @param user
-     * @param offset
-     * @param max
-     * @param sortorder
-     * @param sort
-     * @return
-     */
+/**
+ * Not really setup for a REST service as is specific to the Annotator Panel interface.
+ * If a user has read permissions this method will work.
+ * @param sequenceName
+ * @param request
+ * @param annotationName
+ * @param type
+ * @param user
+ * @param offset
+ * @param max
+ * @param sortorder
+ * @param sort
+ * @return
+ */
     def findAnnotationsForSequence(String sequenceName, String request, String annotationName, String type, String user, Integer offset, Integer max, String sortorder, String sort, String clientToken) {
         try {
             JSONObject returnObject = createJSONFeatureContainer()
@@ -310,6 +313,8 @@ class AnnotatorController {
                     case "Pseudogene": viewableTypes.add(Pseudogene.class.canonicalName)
                         break
                     case "repeat_region": viewableTypes.add(RepeatRegion.class.canonicalName)
+                        break
+                    case "terminator": viewableTypes.add(Terminator.class.canonicalName)
                         break
                     case "transposable_element": viewableTypes.add(TransposableElement.class.canonicalName)
                         break
@@ -350,6 +355,11 @@ class AnnotatorController {
                 }
                 if (annotationName) {
                     ilike('name', '%' + annotationName + '%')
+                }
+                if (user) {
+                    owners {
+                        'in'('username', user)
+                    }
                 }
                 'in'('class', viewableTypes)
             }
@@ -552,26 +562,26 @@ class AnnotatorController {
         render updateFeatureContainer
     }
 
-    /**
-     * This is a public passthrough to version
-     */
+/**
+ * This is a public passthrough to version
+ */
     def version() {}
 
-    /**
-     * This is a very specific method for the GWT interface.
-     * An additional method should be added.
-     *
-     * AnnotatorService.getAppState() throws an exception and returns an empty JSON string
-     * if the user has insufficient permissions.
-     */
+/**
+ * This is a very specific method for the GWT interface.
+ * An additional method should be added.
+ *
+ * AnnotatorService.getAppState() throws an exception and returns an empty JSON string
+ * if the user has insufficient permissions.
+ */
     @Transactional
     def getAppState() {
         preferenceService.evaluateSaves(true)
         render annotatorService.getAppState(params.get(FeatureStringEnum.CLIENT_TOKEN.value).toString()) as JSON
     }
 
-    /**
-     */
+/**
+ */
     @Transactional
     def setCurrentOrganism(Organism organismInstance) {
         // set the current organism
@@ -587,8 +597,8 @@ class AnnotatorController {
         render annotatorService.getAppState(params[FeatureStringEnum.CLIENT_TOKEN.value] as String) as JSON
     }
 
-    /**
-     */
+/**
+ */
     @Transactional
     def setCurrentSequence(Sequence sequenceInstance) {
         if (!permissionService.checkPermissions(PermissionEnum.READ)) {
@@ -607,11 +617,11 @@ class AnnotatorController {
         log.error "not authorized"
     }
 
-    /**
-     * Permissions handled upstream
-     * @param max
-     * @return
-     */
+/**
+ * Permissions handled upstream
+ * @param max
+ * @return
+ */
     def report(Integer max) {
         List<AnnotatorSummary> annotatorSummaryList = new ArrayList<>()
         params.max = Math.min(max ?: 20, 100)
@@ -619,46 +629,46 @@ class AnnotatorController {
         List<User> annotators = User.list(params)
 
         annotators.each {
-            annotatorSummaryList.add(reportService.generateAnnotatorSummary(it, true))
+            annotatorSummaryList.add(reportService.generateAnnotatorSummary(it))
         }
 
         render view: "report", model: [annotatorInstanceList: annotatorSummaryList, annotatorInstanceCount: User.count]
     }
 
-    /**
-     * report annotation summary that is grouped by userGroups
-     */
+/**
+ * report annotation summary that is grouped by userGroups
+ */
     def instructorReport(UserGroup userGroup, Integer max) {
         params.max = Math.min(max ?: 20, 100)
         // restricted groups
         def groups = UserGroup.all
-        def filteredGroups =  groups
+        def filteredGroups = groups
         // if user is admin, then include all
         // if group has metadata with the creator or no metadata then include
 
         if (!permissionService.isAdmin()) {
             log.debug "filtering groups"
 
-            filteredGroups = groups.findAll(){
+            filteredGroups = groups.findAll() {
                 it.metadata == null || it.getMetaData("creator") == (permissionService.currentUser.id as String) || permissionService.isGroupAdmin(it, permissionService.currentUser)
             }
         }
         if (!filteredGroups) {
-            def error = [error: "no authorized groups"]
+            def error = [error: "No authorized groups"]
             render error as JSON
             return
         }
-        userGroup = userGroup?:filteredGroups.first()
+        userGroup = userGroup ?: filteredGroups.first()
 
         List<AnnotatorSummary> annotatorSummaryList = new ArrayList<>()
         List<User> allUsers = User.list(params)
-        List<User> annotators = allUsers.findAll(){
+        List<User> annotators = allUsers.findAll() {
             it.userGroups.contains(userGroup)
         }
 
         def annotatorInstanceCount = userGroup.users.size()
         annotators.each {
-            annotatorSummaryList.add(reportService.generateAnnotatorSummary(it, true))
+            annotatorSummaryList.add(reportService.generateAnnotatorSummary(it))
         }
 
         render view: "instructorReport", model: [userGroups: filteredGroups, userGroup: userGroup, permissionService: permissionService, annotatorInstanceList: annotatorSummaryList, annotatorInstanceCount: annotatorInstanceCount]
@@ -671,7 +681,7 @@ class AnnotatorController {
             redirect(uri: "/auth/login")
             return
         }
-        render view: "detail", model: [annotatorInstance: reportService.generateAnnotatorSummary(user, true)]
+        render view: "detail", model: [annotatorInstance: reportService.generateAnnotatorSummary(user)]
     }
 
     def ping() {
@@ -687,7 +697,7 @@ class AnnotatorController {
     }
 
     def export() {
-        if(!params.max) params.max = 10
+        if (!params.max) params.max = 10
         response.contentType = grailsApplication.config.grails.mime.types[params.format]
         response.setHeader("Content-disposition", "attachment; filename=annotators.${params.extension}")
         List fields = ["username", "firstname", "lastname", "usergroup", "organism", "totalfeaturecount", "genecount", "transcripts", "exons", "te", "rr", "lastupdated"]
@@ -701,8 +711,8 @@ class AnnotatorController {
         groups.each { group ->
             def userGroup = UserGroup.findById(group)
             def annotators = userGroup.users
-            annotators.each { annotator ->
-                def annotatorSummary = reportService.generateAnnotatorSummary(annotator, true)
+            annotators.each { User annotator ->
+                AnnotatorSummary annotatorSummary = reportService.generateAnnotatorSummary(annotator)
                 annotatorSummary.userOrganismPermissionList.each {
                     Organism organism = it.userOrganismPermission.organism
 
@@ -735,7 +745,7 @@ class AnnotatorController {
             , @RestApiParam(name = "name", type = "string", paramType = RestApiParamType.QUERY, description = "Group name")
     ]
     )
-    def getAnnotatorsReportForGroup(){
+    def getAnnotatorsReportForGroup() {
         JSONObject dataObject = permissionService.handleInput(request, params)
         if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN)) {
             render status: HttpStatus.UNAUTHORIZED.value()
@@ -745,10 +755,10 @@ class AnnotatorController {
         def group
         if (!dataObject.id && !dataObject.name) {
             def userGroups = UserGroup.all
-            def groupList = userGroups.findAll(){
+            def groupList = userGroups.findAll() {
                 it.metadata == null || it.getMetaData("creator") == (permissionService.currentUser.id as String) || permissionService.isGroupAdmin(it, permissionService.currentUser)
             }
-            group = groupList.collect{it.id}
+            group = groupList.collect { it.id }
         }
         if (!group && dataObject.id) {
             def userGroup = UserGroup.findById(dataObject.id)

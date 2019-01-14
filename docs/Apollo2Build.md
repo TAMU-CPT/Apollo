@@ -81,9 +81,10 @@ Updating the web-service doc can be done with `./apollo create-rest-doc`
 
 #### Running the code for the making client plugin changes
 
-After starting the server run `./apollo watchman` which should automatically copy any files that have been modified from the [client directory](../client) to the running instance.
+After starting the server you can run `./gradlew installJBrowseWebOnly` or `./apollo jbrowse` to push changes from the JavaScript code in the `client/apollo` directory. 
 
-If for some reason this is not working then make sure that your network development tab, in your browser console, has disabled caching.  You can also run the command `gradle copy-resources-dev` manually each time instead if the files don't seem to be getting copied.
+If for some reason this is not working then make sure that your network development tab, in your browser console, has disabled caching.  You can also run the command `./gradlew copy-resources-dev` manually each time instead if the files don't seem to be getting copied.
+
 
 #### Running the code for GWT changes 
 
