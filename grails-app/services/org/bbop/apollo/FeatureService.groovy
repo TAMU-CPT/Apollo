@@ -36,7 +36,7 @@ class FeatureService {
     public static final String MANUALLY_DISSOCIATE_TRANSCRIPT_FROM_GENE = "Manually dissociate transcript from gene"
     public static final
     def rnaFeatureTypes = [MRNA.cvTerm, MiRNA.cvTerm, NcRNA.cvTerm, RRNA.cvTerm, SnRNA.cvTerm, SnoRNA.cvTerm, TRNA.cvTerm, Transcript.cvTerm]
-    public static final def singletonFeatureTypes = [RepeatRegion.cvTerm, Terminator.alternateCvTerm, TransposableElement.cvTerm]
+    public static final def singletonFeatureTypes = [RepeatRegion.cvTerm, TransposableElement.cvTerm,Terminator.cvTerm]
 
     @Timed
     @Transactional
@@ -1903,6 +1903,9 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
         }
         if (gsolFeature.symbol) {
             jsonFeature.put(FeatureStringEnum.SYMBOL.value, gsolFeature.symbol);
+        }
+        if (gsolFeature.status) {
+            jsonFeature.put(FeatureStringEnum.STATUS.value, gsolFeature.status.value);
         }
         if (gsolFeature.description) {
             jsonFeature.put(FeatureStringEnum.DESCRIPTION.value, gsolFeature.description);

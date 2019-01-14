@@ -548,6 +548,7 @@ class RequestHandlingService {
             fetchMode 'featureLocations.sequence', FetchMode.JOIN
             fetchMode 'featureProperties', FetchMode.JOIN
             fetchMode 'featureDBXrefs', FetchMode.JOIN
+            fetchMode 'status', FetchMode.JOIN
             fetchMode 'parentFeatureRelationships', FetchMode.JOIN
             fetchMode 'childFeatureRelationships', FetchMode.JOIN
             fetchMode 'childFeatureRelationships.parentFeature', FetchMode.JOIN
@@ -2340,7 +2341,7 @@ class RequestHandlingService {
         User user = permissionService.getCurrentUser(inputObject)
         JSONObject featureContainer = createJSONFeatureContainer()
 
-        def singletonFeatureTypes = [RepeatRegion.cvTerm, Terminator.alternateCvTerm,  TransposableElement.cvTerm]
+        def singletonFeatureTypes = [RepeatRegion.cvTerm, TransposableElement.cvTerm, Terminator.cvTerm]
         def rnaFeatureTypes = [MRNA.cvTerm, MiRNA.cvTerm, NcRNA.cvTerm, RRNA.cvTerm, SnRNA.cvTerm, SnoRNA.cvTerm, TRNA.cvTerm, Transcript.cvTerm]
 
         for (int i = 0; i < features.length(); i++) {

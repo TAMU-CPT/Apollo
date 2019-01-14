@@ -115,9 +115,9 @@ return declare( CanvasFeaturesTrack,
                 {
                   "label" : "terminator",
                   "action" : function() {
-                     var atrack=thisB.webapollo.getAnnotTrack();
-                     atrack.createGenericOneLevelAnnotations([this.feature], "terminator", false);
-                   }
+                      var atrack=thisB.webapollo.getAnnotTrack();
+                      atrack.createGenericOneLevelAnnotations([this.feature], "terminator", true);
+                  }
                 },
                 {
                   "label" : "transposable element",
