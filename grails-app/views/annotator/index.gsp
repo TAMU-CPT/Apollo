@@ -10,7 +10,7 @@
 
     <meta name="layout" content="annotator2">
     %{--<meta name="layout" content="main"/>--}%
-    <title>Annotator</title>
+    <title>Phage Annotator</title>
 
     <asset:javascript src="spring-websocket"/>
 

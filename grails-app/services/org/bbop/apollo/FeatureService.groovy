@@ -1169,16 +1169,23 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
         boolean partialStart = false;
         boolean partialStop = false;
 
+
         if (mrna.length() > 3) {
             for (String startCodon : translationTable.getStartCodons()) {
                 // find the first start codon
-                startIndex = mrna.indexOf(startCodon)
+                startIndex = mrna.indexOf(startCodon);
                 while (startIndex >= 0) {
+                    log.debug "StartIndex ${startIndex} ${startCodon} ${transcript}"
                     String mrnaSubstring = mrna.substring(startIndex)
                     String aa = SequenceTranslationHandler.translateSequence(mrnaSubstring, translationTable, true, readThroughStopCodon)
                     if (aa.length() > longestPeptide.length()) {
-                        longestPeptide = aa
-                        bestStartIndex = startIndex
+                        longestPeptide = aa;
+                        bestStartIndex = startIndex;
+                        bestStopIndex = startIndex + (aa.length() * 3);
+                        if (!longestPeptide.substring(longestPeptide.length() - 1).equals(TranslationTable.STOP)) {
+                            partialStop = true;
+                            bestStopIndex += mrnaSubstring.length() % 3;
+                        }
                     }
                     startIndex = mrna.indexOf(startCodon, startIndex + 1)
                 }
@@ -1195,7 +1202,6 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
                     longestPeptide = aa
                     bestStartIndex = startIndex
                 }
-                startIndex++
             }
         }
 
@@ -1213,41 +1219,34 @@ public void setTranslationEnd(Transcript transcript, int translationEnd) {
 
         if (transcript instanceof MRNA) {
             CDS cds = transcriptService.getCDS(transcript)
+//        boolean needCdsIndex = cds == null;
             if (cds == null) {
                 cds = transcriptService.createCDS(transcript);
                 transcriptService.setCDS(transcript, cds);
             }
-
-            int fmin = convertModifiedLocalCoordinateToSourceCoordinate(transcript, bestStartIndex)
-
-            if (bestStopIndex >= 0) {
-                log.debug "bestStopIndex >= 0"
-                int fmax = convertModifiedLocalCoordinateToSourceCoordinate(transcript, bestStopIndex)
-                if (cds.strand == Strand.NEGATIVE.value) {
-                    int tmp = fmin
-                    fmin = fmax + 1
-                    fmax = tmp + 1
+            if (bestStartIndex >= 0) {
+                int fmin = convertModifiedLocalCoordinateToSourceCoordinate(transcript, bestStartIndex);
+                int fmax = convertModifiedLocalCoordinateToSourceCoordinate(transcript, bestStopIndex);
+                if (cds.getStrand().equals(-1)) {
+                    int tmp = fmin;
+                    fmin = fmax + 1;
+                    fmax = tmp + 1;
                 }
-                setFmin(cds, fmin)
-                setFmax(cds, fmax)
+                setFmin(cds, fmin);
+                cds.featureLocation.setIsFminPartial(false);
+                setFmax(cds, fmax);
+                cds.featureLocation.setIsFmaxPartial(partialStop);
             } else {
-                log.debug "bestStopIndex < 0"
-                int fmax = transcript.strand == Strand.NEGATIVE.value ? transcript.fmin : transcript.fmax
-                if (cds.strand == Strand.NEGATIVE.value) {
-                    int tmp = fmin
-                    fmin = fmax
-                    fmax = tmp + 1
+                setFmin(cds, transcript.getFmin());
+                cds.featureLocation.setIsFminPartial(true);
+                String aa = SequenceTranslationHandler.translateSequence(mrna, translationTable, true, readThroughStopCodon);
+                if (aa.substring(aa.length() - 1).equals(TranslationTable.STOP)) {
+                    setFmax(cds, convertModifiedLocalCoordinateToSourceCoordinate(transcript, aa.length() * 3));
+                    cds.featureLocation.setIsFmaxPartial(false);
+                } else {
+                    setFmax(cds, transcript.getFmax());
+                    cds.featureLocation.setIsFmaxPartial(true);
                 }
-                setFmin(cds, fmin)
-                setFmax(cds, fmax)
-            }
-
-            if (cds.featureLocation.strand == Strand.NEGATIVE.value) {
-                cds.featureLocation.setIsFminPartial(partialStop)
-                cds.featureLocation.setIsFmaxPartial(partialStart)
-            } else {
-                cds.featureLocation.setIsFminPartial(partialStart)
-                cds.featureLocation.setIsFmaxPartial(partialStop)
             }
 
             log.debug "Final CDS fmin: ${cds.fmin} fmax: ${cds.fmax}"

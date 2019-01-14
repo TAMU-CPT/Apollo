@@ -2168,10 +2168,10 @@ define([
                 var content = dojo.create("div", {'class': "annotation_info_editor_container"});
                 if (annot.afeature.parent_id) {
                     var selectorDiv = dojo.create("div", {'class': "annotation_info_editor_selector"}, content);
-                    var selectorLabel = dojo.create("label", {
-                        innerHTML: "Select " + annot.get("type"),
-                        'class': "annotation_info_editor_selector_label"
-                    }, selectorDiv);
+                    //var selectorLabel = dojo.create("label", {
+                        //innerHTML: "Select " + annot.get("type"),
+                        //'class': "annotation_info_editor_selector_label"
+                    //}, selectorDiv);
                     var data = [];
                     var feats = track.topLevelParents[annot.afeature.parent_id];
                     for (var i in feats) {
@@ -2183,9 +2183,9 @@ define([
                     });
                     var os = new ObjectStore({objectStore: store});
                     var selector = new Select({store: os});
-                    selector.placeAt(selectorDiv);
-                    selector.attr("value", annot.afeature.uniquename);
-                    selector.attr("style", "width: 50%;");
+                    //selector.placeAt(selectorDiv);
+                    //selector.attr("value", annot.afeature.uniquename);
+                    //selector.attr("style", "width: 50%;");
                     var first = true;
                     dojo.connect(selector, "onChange", function (id) {
                         if (!first) {
@@ -2201,9 +2201,15 @@ define([
                 var numItems = 0;
                 // if annotation has parent, get comments for parent
                 if (annot.afeature.parent_id) {
-                    var parentContent = this.createAnnotationInfoEditorPanelForFeature(annot.afeature.parent_id, track.getUniqueTrackName());
+                    var parentContent = this.createAnnotationInfoEditorPanelForFeature(annot.afeature.parent_id, annot.id(), track.getUniqueTrackName());
                     dojo.attr(parentContent, "class", "parent_annotation_info_editor");
                     dojo.place(parentContent, content);
+                    ++numItems;
+                } else {
+                    var annotContent = this.createAnnotationInfoEditorPanelForFeature(annot.id(), null, track.getUniqueTrackName(), selector, false);
+                    dojo.attr(annotContent, "class", "annotation_info_editor");
+                    dojo.attr(annotContent, "id", "child_annotation_info_editor");
+                    dojo.place(annotContent, content);
                     ++numItems;
                 }
                 var annotContent;
@@ -4259,9 +4265,11 @@ define([
                 return content;
             },
 
-            createAnnotationInfoEditorPanelForFeature: function (uniqueName, trackName, selector, reload) {
+            createAnnotationInfoEditorPanelForFeature: function (uniqueName, childUniqueName, trackName, selector, reload) {
                 var track = this;
                 var feature = this.store.getFeatureById(uniqueName);
+                var child = this.store.getFeatureById(childUniqueName);
+
                 var hasWritePermission = this.canEdit(this.store.getFeatureById(uniqueName));
                 var content = dojo.create("span");
 
@@ -4539,8 +4547,12 @@ define([
                         var newName = nameField.get("value");
                         if (oldName != newName) {
                             updateName(newName);
+                            updateName(newName, childUniqueName);
                             if (selector) {
                                 var select = selector.store.get(feature.uniquename).then(function (select) {
+                                    selector.store.setValue(select, "label", newName);
+                                });
+                                var select2 = selector.store.get(childUniqueName).then(function (select) {
                                     selector.store.setValue(select, "label", newName);
                                 });
                             }
@@ -5197,13 +5209,22 @@ define([
                     dateLastModifiedField.set("value", FormatUtils.formatDate(date.getTime()));
                 }
 
-                var updateName = function (name) {
-                    name = escapeString(name);
-                    var features = '"features": [ { "uniquename": "' + uniqueName + '", "name": "' + name + '" } ]';
-                    var operation = "set_name";
-                    var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
-                    track.executeUpdateOperation(postData);
-                    updateTimeLastUpdated();
+                var updateName = function (name, uniquename) {
+                    if(uniquename){
+                        name = escapeString(name);
+                        var features = '"features": [ { "uniquename": "' + uniquename + '", "name": "' + name + '" } ]';
+                        var operation = "set_name";
+                        var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
+                        track.executeUpdateOperation(postData);
+                        updateTimeLastUpdated();
+                    } else {
+                        name = escapeString(name);
+                        var features = '"features": [ { "uniquename": "' + uniqueName + '", "name": "' + name + '" } ]';
+                        var operation = "set_name";
+                        var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
+                        track.executeUpdateOperation(postData);
+                        updateTimeLastUpdated();
+                    }
                 };
 
                 var updateSymbol = function (symbol) {
@@ -6476,7 +6497,7 @@ define([
             },
 
             showAnnotatorPanel: function(){
-                // http://asdfasfasdf/asfsdf/asdfasdf/apollo/<organism ID / client token>/jbrowse/index.html?loc=Group9.10%3A501752..501878&highlight=&tracklist=1&tracks=DNA%2CAnnotations&nav=1&overview=1
+                // http://example.com/some/path/apollo/<organism ID / client token>/jbrowse/index.html?loc=Group9.10%3A501752..501878&highlight=&tracklist=1&tracks=DNA%2CAnnotations&nav=1&overview=1
                 // to
                 // /apollo/annotator/loadLink?loc=Group9.10:501765..501858&organism=16&tracks=&clientToken=1315746673267340807380563276
                 var hrefString = window.location.href;

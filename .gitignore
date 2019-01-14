@@ -32,6 +32,8 @@ setup.log
 docs/Makefile
 .gradle
 .slcache
+node_modules
+web-app
 restapi.doc
 package-lock.json
 jb_run.js

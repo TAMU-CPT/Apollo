@@ -20,6 +20,7 @@ class FeatureTypeService {
         createFeatureTypeForFeature(Gene.class,Gene.cvTerm)
         createFeatureTypeForFeature(Pseudogene.class,Pseudogene.cvTerm)
         createFeatureTypeForFeature(Transcript.class,Transcript.cvTerm)
+        createFeatureTypeForFeature(Terminator.class,Terminator.alternateCvTerm)
         createFeatureTypeForFeature(MRNA.class,MRNA.cvTerm)
         createFeatureTypeForFeature(SnRNA.class,SnRNA.cvTerm)
         createFeatureTypeForFeature(SnoRNA.class,SnoRNA.cvTerm)
