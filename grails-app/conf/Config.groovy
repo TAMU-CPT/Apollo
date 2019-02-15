@@ -215,6 +215,7 @@ apollo {
     user_pure_memory_store = true
     is_partial_translation_allowed = false // unused so far
     export_subfeature_attrs = false
+    store_orig_id = false // sets the orig_id to the original evidence id when first created
 
     // used for uploading
     common_data_directory = "/opt/apollo"
@@ -399,7 +400,7 @@ auditLog {
 jbrowse {
     git {
         url = "https://github.com/gmod/jbrowse"
-        branch = "1.15.4-release"
+        branch = "1.16.2-release"
 //        branch = "dev"
 //        tag = "15dfd2309f2d508d8bed782d0f68b38dd9927bb4"
         alwaysPull = true
@@ -412,19 +413,17 @@ jbrowse {
 //        fileName = "JBrowse-1.12.0-dev"
 //    }
 //
-//	// Warning: We are still testing the performance of the NeatFeatures plugins in combination with Apollo.
-//	// We advise caution if enabling these plugins with Apollo until this process is finalized.
     plugins {
         WebApollo {
             included = true
         }
-//        NeatHTMLFeatures{
-//            included = true
-//            linearGradient = 0
-//        }
-//        NeatCanvasFeatures{
-//            included = true
-//        }
+        NeatHTMLFeatures{
+            included = true
+            linearGradient = 0
+        }
+        NeatCanvasFeatures{
+            included = true
+        }
         RegexSequenceSearch {
             included = true
         }

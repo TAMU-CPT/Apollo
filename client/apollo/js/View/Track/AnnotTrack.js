@@ -25,7 +25,7 @@ define([
         'dojox/grid/DataGrid',
         'dojox/grid/cells/dijit',
         'dojo/data/ItemFileWriteStore',
-        'WebApollo/View/Track/DraggableHTMLFeatures',
+        'WebApollo/View/Track/DraggableNeatHTMLFeatures',
         'WebApollo/FeatureSelectionManager',
         'WebApollo/JSONUtils',
         'WebApollo/BioFeatureUtils',
@@ -1035,7 +1035,7 @@ define([
                 var subfeatures = [];
                 var strand;
                 var parentFeature;
-                var variantSelectionRecords = new Array();
+                var variantSelectionRecords = [];
 
                 for (var i in selection_records) {
                     var type = selection_records[i].feature.get("type").toUpperCase();
@@ -1100,6 +1100,7 @@ define([
                     var keys = Object.keys(parentFeatures);
                     var singleParent = keys.length === 1;
                     var featureToAdd;
+                    console.log('preccing new feature',parentFeatures)
                     if (singleParent) {
                         featureToAdd = JSONUtils.makeSimpleFeature(parentFeatures[keys[0]]);
                     }
@@ -1109,6 +1110,7 @@ define([
                     if (!featureToAdd.get('name')) {
                         featureToAdd.set('name', featureToAdd.get('id'));
                     }
+                    featureToAdd.set('orig_id', featureToAdd.get('id'));
                     featureToAdd.set("strand", strand);
                     var fmin;
                     var fmax;
@@ -1147,9 +1149,11 @@ define([
                     var biotype ;
 
                     // TODO: pull from the server at some point
+                    // TODO: this list is duplicated
                     var recognizedBioType = [
-                        'transcript' ,'tRNA','snRNA','snoRNA','ncRNA','rRNA','mRNA','miRNA','repeat_region','transposable_element'
+                        'transcript' ,'tRNA','snRNA','snoRNA','ncRNA','rRNA','mRNA','miRNA','repeat_region','transposable_element','terminator'
                     ];
+                    var strandedOneLevelTypes = ['terminator'];
 
                     if(force_type) {
                         biotype = featureToAdd.get('type');
@@ -1167,7 +1171,11 @@ define([
                     }
 
                     var afeat ;
+                    featureToAdd = JSONUtils.handleCigarSubFeatures(featureToAdd,biotype);
+                    console.log('adding',featureToAdd)
+
                     if(biotype === 'mRNA'){
+                        featureToAdd = JSONUtils.handleCigarSubFeatures(featureToAdd,biotype);
                         afeat = JSONUtils.createApolloFeature(featureToAdd, biotype, true);
                         featuresToAdd.push(afeat);
                     }
@@ -1175,7 +1183,7 @@ define([
                         target_track.createGenericAnnotations([featureToAdd], biotype, null , 'gene');
                     }
                     else {
-                        target_track.createGenericOneLevelAnnotations([featureToAdd], biotype , true );
+                        target_track.createGenericOneLevelAnnotations([featureToAdd], biotype , strandedOneLevelTypes.indexOf(biotype)<0);
                     }
 
                     var postData = {
@@ -1223,7 +1231,6 @@ define([
                         }
                     });
                     this.openDialog("Confirm", content);
-                    return;
                 }
                 else {
                     process();
@@ -1243,13 +1250,14 @@ define([
                                 { ref: this.refSeq.name, start: dragfeat.get('start'), end: dragfeat.get('end')},
                                 // feature callback
                                 function (seq) {
-                                    if (seq != dragfeat.get('reference_allele')) {
+                                    if (seq.toUpperCase() != dragfeat.get('reference_allele').toUpperCase()) {
                                         var variantPosition = dragfeat.get('start') + 1;
                                         var message = "Cannot add variant at position: " + variantPosition + " since the REF allele does not match the genomic residues at that position."
                                         target_track.openDialog( 'Cannot Add Variant', message );
                                     }
                                     else {
                                         var afeat = JSONUtils.createApolloVariant(dragfeat, true);
+                                        afeat.orig_id = dojo.clone(dragfeat.id);
                                         featuresToAdd.push(afeat);
 
                                         var postData = {
@@ -1313,12 +1321,14 @@ define([
                         featureToAdd.set("start", fmin);
                         featureToAdd.set("end", fmax);
                         var afeat = JSONUtils.createApolloFeature(featureToAdd, type, true, subfeatType);
+                        console.log('created apollo feature',afeat)
                         if (topLevelType) {
-                            var topLevel = new Object();
+                            var topLevel = {};
+                            topLevel.orig_id = dojo.clone(afeat.id);
                             topLevel.location = dojo.clone(afeat.location);
                             topLevel.type = dojo.clone(afeat.type);
                             topLevel.type.name = topLevelType;
-                            topLevel.children = new Array();
+                            topLevel.children = [];
                             topLevel.children.push(afeat);
                             afeat = topLevel;
                         }
@@ -1330,6 +1340,7 @@ define([
                             var afeat = JSONUtils.createApolloFeature(dragfeat, type, true, subfeatType);
                             if (topLevelType) {
                                 var topLevel = new Object();
+                                topLevel.orig_id = dojo.clone(afeat.id);
                                 topLevel.location = dojo.clone(afeat.location);
                                 topLevel.type = dojo.clone(afeat.type);
                                 topLevel.type.name = topLevelType;
@@ -1495,14 +1506,12 @@ define([
                         track.executeUpdateOperation(postData);
                     }
                     else if (feature.afeature.parent_id) {
-                        var feats = [feature];
                         this.createGenericAnnotations([feature], feature.get("type"), feature.get("subfeatures")[0].get("type"), feature.afeature.parent_type.name);
                     }
                     else {
                         if (!feature.get("name")) {
                             feature.set("name", feature.afeature.name);
                         }
-                        var feats = [feature];
                         this.createGenericOneLevelAnnotations([feature], feature.get("type"), feature.get("strand") == 0);
                     }
                 }
@@ -4283,7 +4292,6 @@ define([
                 var nameField = new dijitTextBox({'class': "annotation_editor_field"});
                 var nameLabelss = "Follow GenBank or UniProt-SwissProt guidelines for gene, protein, and CDS nomenclature.";
                 dojo.place(nameField.domNode, nameDiv);
-                // var nameField = new dojo.create("input", { type: "text" }, nameDiv);
 
                 new Tooltip({
                     connectId: nameDiv,
@@ -4464,8 +4472,6 @@ define([
                     dojo.attr(deleteGoIdButton, "disabled", true);
                     dojo.attr(addCommentButton, "disabled", true);
                     dojo.attr(deleteCommentButton, "disabled", true);
-                    //dojo.attr(addreplacementButton, "disabled", true);
-                    //dojo.attr(deletereplacementButton, "disabled", true);
                 }
 
                 var pubmedIdDb = "PMID";
@@ -4505,7 +4511,6 @@ define([
                             initSymbol(feature);
                             initDescription(feature);
                             initDates(feature);
-                            // initStatus(feature, config);
                             initStatus(feature);
                             initDbxrefs(feature, config);
                             initAttributes(feature, config);
@@ -4618,7 +4623,7 @@ define([
                             var statusRadio = new dijitRadioButton({
                                 value: status[i],
                                 name: "status_" + uniqueName,
-                                checked: status[i] == feature.status ? true : false
+                                checked: status[i] == feature.status
                             });
                             if (!hasWritePermission) {
                                 statusRadio.set("disabled", true);
@@ -4654,6 +4659,7 @@ define([
                         dojo.style(statusDiv, "display", "none");
                     }
                 };
+
 
                 var initDbxrefs = function (feature, config) {
                     if (config.hasDbxrefs) {
@@ -5657,9 +5663,10 @@ define([
 
                     // if feature-render annot-render ,
                     // remove and add: gray-center-10pct
-                    if(div.className.indexOf("feature-render")>=0 &&  div.className.indexOf("annot-render")>=0 ){
-                        div.className = "gray-center-10pct";
-                    }
+                    // var className = div.className ;
+                    // if(typeof div.className === 'string' && div.className.indexOf("feature-render")>=0 &&  div.className.indexOf("annot-render")>=0 ){
+                    //     div.className = "gray-center-10pct";
+                    // }
 // annot_context_menu.unBindDomNode(div);
                     $(div).unbind();
                     for (var i = 0; i < div.childNodes.length; ++i) {
@@ -5904,12 +5911,16 @@ define([
                             information += "Unique id: " + feature.uniquename + "<br/>";
                             information += "Date of creation: " + feature.time_accessioned + "<br/>";
                             information += "Owner: " + feature.owner + "<br/>";
+                            information += "Location: " + feature.location+ "<br/>";
+                            if(feature.length){
+                                information += "Length: " + feature.length+ "<br/>";
+                            }
                             if (feature.parent_ids) {
                                 information += "Parent ids: " + feature.parent_ids + "<br/>";
                             }
                         }
                         if (feature.justification) {
-                            information += "Justification: " + feature.justification + "<br/>";
+                            information += "Comment: " + feature.justification + "<br/>";
                         }
                         track.openDialog("Annotation information", information);
                     },
@@ -6220,7 +6231,11 @@ define([
                     load: function (response, ioArgs) {
                         dojo.create("a", {
                             innerHTML: response.filename,
-                            href: context_path + "/IOService/download?uuid=" + response.uuid + "&exportType=" + response.exportType + "&seqType=" + response.sequenceType + "&format=" + response.format
+                            href: context_path + "/IOService/download?uuid=" + response.uuid + "&exportType=" + response.exportType + "&seqType=" + response.sequenceType + "&format=" + response.format,
+                            onclick:  function(){
+                                track.closeDialog();
+                            }
+
                         }, content);
                         dojo.style(waitingDiv, {display: "none"});
                     },
@@ -6631,6 +6646,10 @@ define([
             },
 
             initAnnotContextMenu: function () {
+
+                // TODO: this list is duplicated
+                var topTypes = ['repeat_region','transposable_element','gene','pseudogene', 'SNV', 'SNP', 'MNV', 'MNP', 'indel', 'insertion', 'deletion','terminator'];
+
                 var thisB = this;
                 contextMenuItems = new Array();
                 annot_context_menu = new dijit.Menu({});
@@ -6671,7 +6690,6 @@ define([
                         var selected = thisB.selectionManager.getSelection();
                         var selectedFeature = selected[0].feature;
                         var selectedFeatureDetails = selectedFeature.afeature;
-                        var topTypes = ['repeat_region','transposable_element','gene','pseudogene', 'SNV', 'SNP', 'MNV', 'MNP', 'indel', 'insertion', 'deletion'];
                         while(selectedFeature  ){
                             if(topTypes.indexOf(selectedFeatureDetails.type.name)>=0){
                                 thisB.getApollo().viewInAnnotationPanel(selectedFeatureDetails.name);
@@ -6763,12 +6781,27 @@ define([
                         }
                     }));
                     changeAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "terminator",
+                        onclick: function(event) {
+                            var selected = thisB.selectionManager.getSelection();
+                            var selectedFeatureType = selected[0].feature.afeature.type.name === "exon" ?
+                                selected[0].feature.afeature.parent_type.name : selected[0].feature.afeature.type.name;
+                            if (selectedFeatureType != "transposable_element" && selectedFeatureType != "repeat_region") {
+                                var message = "Warning: You will not be able to revert back to " + selectedFeatureType + " via 'Change annotation type' menu option, use 'Undo' instead. Do you want to proceed?";
+                                thisB.confirmChangeAnnotationType(thisB, [selected], "terminator", message);
+                            }
+                            else {
+                                thisB.changeAnnotationType("terminator");
+                            }
+                        }
+                    }));
+                    changeAnnotationMenu.addChild(new dijitMenuItem( {
                         label: "repeat_region",
                         onClick: function(event) {
                             var selected = thisB.selectionManager.getSelection();
                             var selectedFeatureType = selected[0].feature.afeature.type.name === "exon" ?
                                 selected[0].feature.afeature.parent_type.name : selected[0].feature.afeature.type.name;
-                            if (selectedFeatureType != "transposable_element") {
+                            if (selectedFeatureType != "transposable_element" && selectedFeatureType != "terminator" ) {
                                 var message = "Warning: You will not be able to revert back to " + selectedFeatureType + " via 'Change annotation type' menu option, use 'Undo' instead. Do you want to proceed?";
                                 thisB.confirmChangeAnnotationType(thisB, [selected], "repeat_region", message);
                             }
@@ -6783,7 +6816,7 @@ define([
                             var selected = thisB.selectionManager.getSelection();
                             var selectedFeatureType = selected[0].feature.afeature.type.name === "exon" ?
                                 selected[0].feature.afeature.parent_type.name : selected[0].feature.afeature.type.name;
-                            if (selectedFeatureType != "repeat_region") {
+                            if (selectedFeatureType != "repeat_region" && selectedFeatureType != "terminator") {
                                 var message = "Warning: You will not be able to revert back to " + selectedFeatureType + " via 'Change annotation type' menu option, use 'Undo' instead. Do you want to proceed?";
                                 thisB.confirmChangeAnnotationType(thisB, [selected], "transposable_element", message);
                             }
@@ -7210,7 +7243,7 @@ define([
             openDialog: function (title, data, width, height) {
                 AnnotTrack.popupDialog.set("title", title);
                 AnnotTrack.popupDialog.set("content", data);
-                AnnotTrack.popupDialog.set("style", "width:" + (width ? width : "80%") + ";height:" + (height ? height : "auto"));
+                AnnotTrack.popupDialog.set("style", "width:" + (width ? width : "auto") + ";height:" + (height ? height : "auto"));
                 AnnotTrack.popupDialog.show();
             },
 
@@ -7292,12 +7325,12 @@ define([
             updateDissociateTranscriptFromGeneItem: function() {
                 var menuItem = this.getMenuItem("dissociate_transcript_from_gene");
                 var selected = this.selectionManager.getSelection();
-                var currentType = selected[0].feature.get('type');
                 if (selected.length != 1) {
                     menuItem.set("disabled", true);
                     return;
                 }
-                if (JSONUtils.variantTypes.includes(currentType.toUpperCase())) {
+                var currentType = selected[0].feature.get('type');
+                if (JSONUtils.variantTypes.includes(currentType.toUpperCase()) || JSONUtils.regulatorTypes.includes(currentType.toUpperCase())) {
                     menuItem.set("disabled", true);
                     return;
                 }
@@ -7335,7 +7368,7 @@ define([
                             menuItems[i].setDisabled(false);
                         }
                     }
-                    else if (selectedType === "miRNA" || selectedType == "snRNA" || selectedType === "snoRNA" ||
+                    else if (selectedType === "miRNA" || selectedType === "snRNA" || selectedType === "snoRNA" ||
                         selectedType === "rRNA" || selectedType === "tRNA" || selectedType === "ncRNA") {
                         if (menuItems[i].label === selectedType) {
                             menuItems[i].setDisabled(true);
@@ -7361,6 +7394,9 @@ define([
                         }
                     }
                     else if (JSONUtils.variantTypes.includes(selectedType.toUpperCase())) {
+                        menuItems[i].setDisabled(true);
+                    }
+                    else if (JSONUtils.regulatorTypes.includes(selectedType.toUpperCase())) {
                         menuItems[i].setDisabled(true);
                     }
                     else {

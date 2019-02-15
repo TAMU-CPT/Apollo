@@ -18,46 +18,44 @@ that are defined in the Config.groovy file:
 ``` 
 // default apollo settings
 apollo {
-  default_minimum_intron_size = 1
-  history_size = 0
-  overlapper_class = "org.bbop.apollo.sequence.OrfOverlapper"
-  track_name_comparator = "/config/track_name_comparator.js"
-  use_cds_for_new_transcripts = true
-  user_pure_memory_store = true
-  translation_table = "/config/translation_tables/ncbi_1_translation_table.txt"
-  is_partial_translation_allowed = false // unused so far
-  get_translation_code = 1
-  only_owners_delete = false
-  sequence_search_tools = [
-    blat_nuc: [
-      search_exe: "/usr/local/bin/blat",
-      search_class: "org.bbop.apollo.sequence.search.blat.BlatCommandLineNucleotideToNucleotide",
-      name: "Blat nucleotide",
-      params: ""
-    ],
-    blat_prot: [
-      search_exe: "/usr/local/bin/blat",
-      search_class: "org.bbop.apollo.sequence.search.blat.BlatCommandLineProteinToNucleotide",
-      name: "Blat protein",
-      params: ""
+
+    // other translation codes are of the form ncbi_KEY_translation_table.txt
+    // under the web-app/translation_tables  directory
+    // to add your own add them to that directory and over-ride the translation code here
+    get_translation_code = 1
+    proxies = [
+            [
+                    referenceUrl : 'http://golr.geneontology.org/select',
+                    targetUrl    : 'http://golr.geneontology.org/solr/select',
+                    active       : true,
+                    fallbackOrder: 0,
+                    replace      : true
+            ]
+            ,
+            [
+                    referenceUrl : 'http://golr.geneontology.org/select',
+                    targetUrl    : 'http://golr.berkeleybop.org/solr/select',
+                    active       : false,
+                    fallbackOrder: 1,
+                    replace      : false
+            ]
     ]
-  ]    
-      
-
-
-  splice_donor_sites = [ "GT" ]
-  splice_acceptor_sites = [ "AG"]
-  gff3.source= "." 
-  bootstrap = false
-
-  info_editor = {
-    feature_types = "default"
-    attributes = true
-    dbxrefs = true
-    pubmed_ids = true
-    go_ids = true
-    comments = true
-  }
+    sequence_search_tools = [
+            blat_nuc : [
+                    search_exe  : "/usr/local/bin/blat",
+                    search_class: "org.bbop.apollo.sequence.search.blat.BlatCommandLineNucleotideToNucleotide",
+                    name        : "Blat nucleotide",
+                    params      : ""
+            ],
+            blat_prot: [
+                    search_exe  : "/usr/local/bin/blat",
+                    search_class: "org.bbop.apollo.sequence.search.blat.BlatCommandLineProteinToNucleotide",
+                    name        : "Blat protein",
+                    params      : ""
+                    //tmp_dir: "/opt/apollo/tmp" optional param
+            ]
+    ]
+    ...
 }
 ```
 
@@ -90,48 +88,6 @@ or ```git```, which can include a ```tag``` or ```branch``` as above.
 
 Options for ```alwaysRecheck``` and ```alwaysRepull``` always check the branch and tag and always pull respectiviely. 
 
-__Warning:__ The ```NeatHTMLFeatures``` and ```NeatCanvasFeatures``` plugins work very well in JBrowse instances.  We are still in the process of testing and improving their performance in combination with the Apollo plugin. Until we finalize this process, we strongly advise caution if enabling them for use in your Apollo instances.
-
-```
-jbrowse {
-    git {
-        url= "https://github.com/GMOD/jbrowse"
-//        tag = "1.15.4-release"
-        branch = "master"
-        alwaysPull = true
-        alwaysRecheck = true
-    }
-    plugins {
-        WebApollo{
-            included = true
-        }
-        NeatHTMLFeatures{
-            included = true
-        }
-        NeatCanvasFeatures{
-            included = true
-        }
-        RegexSequenceSearch{
-            included = true
-        }
-        HideTrackLabels{
-            included = true
-        }
-//        MyVariantInfo {
-//            git = 'https://github.com/GMOD/myvariantviewer'
-//            branch = 'master'
-//            alwaysRecheck = "true"
-//            alwaysPull = "true"
-//        }
-//        SashimiPlot {
-//            git = 'https://github.com/cmdcolin/sashimiplot'
-//            branch = 'master'
-//            alwaysPull = "true"
-//        }
-    }
-}
-```
-
 
 ### Translation tables
 
@@ -144,7 +100,6 @@ To use a different table from [this list of NCBI translation tables](http://www.
 apollo {
 ...
   get_translation_code = "11"
-}
 ```   
 
 You may also add a custom translation table in the ```web-app/translation_tables``` directory as follows:
@@ -199,6 +154,12 @@ Additional links for log4j:
 - Advanced log4j configuration:
   http://blog.andresteingress.com/2012/03/22/grails-adding-more-than-one-log4j-configurations/
 - Grails log4j guide: http://grails.github.io/grails-doc/2.4.x/guide/single.html#logging
+
+### Add attribute for the original id of the object
+
+In the apollo config override set `store_orig_id=true` to store an `orid_id` attribute on the top-level feature that 
+represents the original id from the genomic evidence.  This is useful for re-merging code as Apollo will generate its own IDs because 
+annotations will be based on multiple evidence sources.
 
 
 ### Canned Elements
@@ -353,36 +314,74 @@ forwarded to the tomcat server.  This setup is not necessary, but it is a very s
 Note that we use the SockJS library, which will downgrade to long-polling if websockets are not available, but since
 websockets are preferable, it helps to take some extra steps to ensure that the websocket calls are proxied or forwarded
 in some way too.
-If you are using tomcat 7, please make sure to use the most recent stable version, which supports web sockets by default.  Using older versions (e.g. 7.0.26) websockets may not be included by default and you will need to include an additional .jar file.
+
+Use Tomcat 8 or above as Tomcat 7 has been deprecated.
+
+
+### Installing secure certificates. 
+
+Free certificates can be found by using [certbot](https://certbot.eff.org/).
+
+Follow the instructions to install your appropriate certificate if users are going to potentially be sending passwords across. 
+
 
 #### Apache Proxy 
 
-The most simple setup on apache is as follows.. Here is the most basic configuration for a reverse proxy:
+Here is the most basic configuration for a reverse proxy with Apache 2.4 (will probably work for 2.2 as well).   
 
+Enable proxy_pass and proxy_wstunnel:
+
+    sudo a2enmod proxy proxy_wstunnel proxy_connect proxy_http
+    sudo service apache2 restart
+
+In the apache conf directory edit `proxy.conf`
 
 ``` 
-ProxyPass  /apollo http://localhost:8080/apollo
-ProxyPassReverse  /apollo http://localhost:8080/apollo
+   <Proxy *>
+      # if using Apache 2.2 use Order, Allow directives
+      Order Deny,Allow
+      Allow from all
+
+      # if using Apache 2.4 use Require directive
+      Require all granted
+
+    </Proxy>
+    
+    ProxyPass /apollo/stomp/info http://localhost:8080/apollo/stomp/info
+    ProxyPassReverse /apollo/stomp/info http://localhost:8080/apollo/stomp/info
+
+    ProxyPass /apollo/stomp ws://localhost:8080/apollo/stomp
+    ProxyPassReverse /apollo/stomp ws://localhost:8080/apollo/stomp
+
+    ProxyPass           /apollo  http://localhost:8080/apollo
+    ProxyPassReverse    /apollo  http://localhost:8080/apollo
+
 ```
+
+### If Tomcat is running SSL 
+
+If the secure certificate is on Apollo and you're running via apache use `https` and `wss` protocols instead or just change the tomcat server port explicitly:
+
+```
+    ProxyPass /apollo/stomp/info https://site:8443/apollo/stomp/info
+    ProxyPassReverse /apollo/stomp/info https://localhost:8443/apollo/stomp/info
+
+    ProxyPass /apollo/stomp wss://localhost:8443/apollo/stomp
+    ProxyPassReverse /apollo/stomp wss://localhost:8443/apollo/stomp
+
+    ProxyPass           /apollo  https://localhost:8443/apollo
+    ProxyPassReverse    /apollo  https://localhost:8443/apollo
+
+```
+
+
 
 Note: that a reverse proxy _does not_ use `ProxyRequests On` (which turns on forward proxying, which is dangerous)
 
+Also note: This setup will downgrade (but will still function) to use AJAX long-polling without the websocket proxy being configured.
 
-Also note: This setup will use downgrade to use AJAX long-polling without the websocket proxy being configured.
 
 
-To setup the proxy for websockets, you can use mod_proxy_wstunnel, first load the module
-
-``` 
-LoadModule proxy_wstunnel_module libexec/apache2/mod_proxy_wstunnel.so
-```
-
-Then add extra ProxyPass calls for the websocket "endpoint" called `/apollo/stomp`
-
-``` 
-ProxyPass /apollo/stomp  ws://localhost:8080/apollo/stomp
-ProxyPassReverse /apollo/stomp ws://localhost:8080/apollo/stomp
-```
 
 ##### Debugging proxy issues
 

@@ -1,9 +1,52 @@
 
+## 2.3.1
+
+Bug Fixes
+
+- Fixed issue when dragging features to resize was not providing an indicator box [1988](https://github.com/GMOD/Apollo/pull/1988)
+- Fixed issue when sequence alterations were not rendering the full height of the sequence track [2049](https://github.com/GMOD/Apollo/pull/2049)
+- Making organisms obsolete should remove associated permissions [2043](https://github.com/GMOD/Apollo/pull/2043)
+- User-created features taken from split reads should create features with introns [2036](https://github.com/GMOD/Apollo/pull/2036)
+- Should indicate split reads properly in evidence [2034](https://github.com/GMOD/Apollo/pull/2034)
+- Temporary files not removed during export of GFF3 or other file types [1966](https://github.com/GMOD/Apollo/pull/1966)
+- Fixed issue where you could not alter an isoform after deleting a gene name [1961](https://github.com/GMOD/Apollo/pull/1961)
+- Fixed some minor issues associated with sequence alterations [1497](https://github.com/GMOD/Apollo/pull/1497)
+- Multiple owners tagged on GFF3 export [29](https://github.com/GMOD/Apollo/pull/29)
+
+Minor Features
+- Allowed duplication of organism from the Organism Panel [1968](https://github.com/GMOD/Apollo/pull/1968)
+- Allows making an organism obsolete [1967](https://github.com/GMOD/Apollo/pull/1967)
+- Create a filter and flag for inactive users [1937](https://github.com/GMOD/Apollo/pull/1937)
+- Allowed deletion of feature from the Sequence and Annotator Panels [2040](https://github.com/GMOD/Apollo/pull/2040)
+- Allow export of orig_id as an optional attribute [2002](https://github.com/GMOD/Apollo/pull/2002)
+
+
+## 2.3.0
+
+
+Features
+
+- Moved to JBrowse 1.16.2 by default [1988](https://github.com/GMOD/Apollo/pull/1988), which also fixed track styling issues [#1942](https://github.com/GMOD/Apollo/pull/1942)
+- Moved to Neat Features as the default  [2021](https://github.com/GMOD/Apollo/pull/2021)
+- Improved terminator annoation [1997](https://github.com/GMOD/Apollo/pull/1997)
+
+
+Bug Fixes
+
+- JBrowse bin directory not properly being installed [2017](https://github.com/GMOD/Apollo/pull/2017)
+- Workaround for declaring plugins in trackList.json via a JBrowse bug [2014](https://github.com/GMOD/Apollo/pull/2014)
+- Fixed problems with creating variant annotations with soft masking [2009](https://github.com/GMOD/Apollo/pull/2009)
+- Fixed bugs in reporting code [2008](https://github.com/GMOD/Apollo/pull/2008)
+- Fixed several build bugs #1996, #1994, #1993
+- Fixed bug where deletions, insertions, and substitutions were not editable in the side-bpanel [#1923](https://github.com/GMOD/Apollo/pull/2008)
+
+
+
 ## 2.2.0
 
 Features
 
-- Move to JBrowse 1.15 and webpack (smaller file size) [1928](https://github.com/GMOD/Apollo/pull/1928)
+- Move to JBrowse 1.15 and webpack (smaller file size) [1928](https://github.com/GMOD/Apollo/pull/1928),[1986](https://github.com/GMOD/Apollo/pull/1986)
 - Add ability to annotate terminators [1954](https://github.com/GMOD/Apollo/issues/1954)
 - Added a script for removing all features from a sequence [1935](https://github.com/GMOD/Apollo/pull/1935)
 - Allowed removal of ALL user permissions (instead of deleting) to inactivate [777](https://github.com/GMOD/Apollo/issues/777)
