@@ -216,6 +216,9 @@ JSONUtils.handleCigarSubFeatures = function(feature,type){
     type = type ? type : feature.get('type');
     if(type.endsWith('RNA') && JSONUtils.isAlignment(feature)){
         feature = JSONUtils.generateSubFeaturesFromCigar(feature)
+        if(!feature.get('type')){
+            feature.set('type',type)
+        }
     }
     return feature ;
 };
@@ -235,6 +238,16 @@ JSONUtils.parseCigar = function( cigar ) {
    });
 };
 
+JSONUtils.createExonSubFeature = function (feature,start,end){
+    var exon = new SimpleFeature({parent:feature});
+    exon.set('start', start);
+    exon.set('end', end );
+    exon.set('strand', feature.get('strand'));
+    exon.set('type', 'exon');
+    var subfeature = JSONUtils.makeSimpleFeature(exon,feature);
+    feature.get("subfeatures").push(subfeature);
+};
+
 /**
 * Generate exon subfeatures only from M vs N.
 * @param feature
@@ -245,27 +258,61 @@ JSONUtils.generateSubFeaturesFromCigar = function(feature){
     // split <Number>Cigar
     var ops = this.parseCigar(cigarData);
     var currOffset = 0;
-    console.log('ffeature',feature);
     var start = feature.data.start ;
     // var featureToAdd = JSONUtils.makeSimpleFeature(feature);
     feature.set('subfeatures', []);
+    var openExon = false ;
+    var openStart, op, len;
     array.forEach( ops, function( oprec ) {
-        var op  = oprec[0];
-        var len = oprec[1];
+        op  = oprec[0];
+        len = oprec[1];
+        // 1. open or continue open
         if( op === 'M' || op === '=' || op === 'E' ) {
-            // create an exon subfeature for each
-            // add subfeature
-            var exon = new SimpleFeature({parent:feature});
-            exon.set('start', currOffset+start);
-            exon.set('end', currOffset + len+start);
-            exon.set('strand', feature.strand);
-            exon.set('type', 'exon');
-            var subfeature = JSONUtils.makeSimpleFeature(exon,feature);
-            feature.get("subfeatures").push(subfeature);
+            // if it was closed, then open with start, strand, type
+            if(!openExon){
+                // add subfeature
+                openStart = currOffset + start ;
+                openExon = true ;
+            }
        }
-        currOffset += len;
+       else
+        if( op === 'N' ) {
+            // if it was open, then close and add the subfeature
+            if(openExon){
+                JSONUtils.createExonSubFeature(feature,openStart,currOffset+start);
+                openExon = false ;
+            }
+        }
+
+
+        // we ignore insertions when calculating potential exon length
+        if( op !== 'I' ) {
+            currOffset += len;
+        }
     });
+
+    // F. if we are still open, then close with the final length and add subfeature
+    if(openExon && openStart!==undefined){
+        JSONUtils.createExonSubFeature(feature,openStart,currOffset+start);
+    }
+
     return feature;
+};
+
+JSONUtils.getPreferredSubFeature = function(type,test_feature){
+    if (JSONUtils.verbose_conversion)  {
+        console.log('parent type',type,'subfeature type',test_feature.get('type'))
+    }
+    if(  (type==='mRNA' && test_feature.get('type')==='gene')
+        || (type.endsWith('RNA') && test_feature.get('type').endsWith('gene') )
+        || (type.endsWith('transcript') && test_feature.get('type').endsWith('gene') )
+    ){
+        var subfeatures = test_feature.get('subfeatures');
+        if(subfeatures && subfeatures.length===1){
+            return subfeatures[0];
+        }
+    }
+    return null ;
 };
 
 /**
@@ -299,9 +346,10 @@ JSONUtils.generateSubFeaturesFromCigar = function(feature){
 JSONUtils.createApolloFeature = function( jfeature, specified_type, useName, specified_subtype )   {
     var diagnose =  (JSONUtils.verbose_conversion && jfeature.children() && jfeature.children().length > 0);
     if (diagnose)  {
-        console.log("converting JBrowse feature to Apollo feture, specified type: " + specified_type);
+        console.log("converting JBrowse feature to Apollo feture, specified type: " + specified_type + " " + specified_subtype);
         console.log(jfeature);
     }
+
 
     var afeature = {};
     var astrand;
@@ -327,23 +375,24 @@ JSONUtils.createApolloFeature = function( jfeature, specified_type, useName, spe
     var typename;
     if (specified_type)  {
         typename = specified_type;
+        var preferredSubFeature = this.getPreferredSubFeature(specified_type,jfeature);
+        if(preferredSubFeature){
+            return this.createApolloFeature(preferredSubFeature,specified_type,useName,specified_subtype)
+        }
     }
-    else if ( jfeature.get('type') ) {
+    else
+    if ( jfeature.get('type') ) {
         typename = jfeature.get('type');
     }
 
     if (typename)  {
         afeature.type = {
             "cv": {
-            "name": "sequence"
-        }
-    };
-    afeature.type.name = typename;
+                "name": "sequence"
+            }
+        };
+        afeature.type.name = typename;
     }
-
-    // if (useName && name) {
-    //     afeature.name = name;
-    // }
 
     var id = jfeature.get('id');
     var name = jfeature.get('name');

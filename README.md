@@ -1,5 +1,5 @@
 # Apollo
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.2254462.svg)](https://doi.org/10.5281/zenodo.2254462)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.2572932.svg)](https://doi.org/10.5281/zenodo.2572932)
 [![Build](https://travis-ci.org/GMOD/Apollo.svg?branch=master)](https://travis-ci.org/GMOD/Apollo?branch=master)
 [![Coverage](https://coveralls.io/repos/github/GMOD/Apollo/badge.svg?branch=master)](https://coveralls.io/github/GMOD/Apollo?branch=master)
 [![Documentation](https://readthedocs.org/projects/genomearchitect/badge/?version=latest)](https://genomearchitect.readthedocs.org/en/latest/)
@@ -15,7 +15,7 @@ Javascript client that runs in a web browser as a JBrowse plugin.
 
 For general information on Apollo, go to [http://genomearchitect.org/](http://genomearchitect.org/).  Cite Apollo using [10.1371/journal.pcbi.1006790](https://doi.org/10.1371/journal.pcbi.1006790)
 
-Questions / Comments / Community contact can be sent to our [Apollo user mailing list](mailto:apollo@lists.lbl.gov). To subscribe send [this email to our mail server](mailto:sympa@lists.lbl.gov?subject=subscribe apollo) or review additional [sympa commands](http://www.sympa.org/manual/sympa-commands). Old questions are [archived on Nabble](http://gmod.827538.n3.nabble.com/Apollo-f815553.html).
+Questions / Comments / Community contact can be sent to our [Apollo user mailing list](mailto:apollo@lbl.gov) or posted directory to our [google group](https://groups.google.com/a/lbl.gov/forum/#!forum/apollo). Old questions are [archived on Nabble](http://gmod.827538.n3.nabble.com/Apollo-f815553.html).
 
 Complete Apollo installation and configuration instructions are available from the [Apollo documentation pages](http://genomearchitect.readthedocs.io/en/latest/)
 

@@ -24,6 +24,7 @@ class UserController {
     def permissionService
     def preferenceService
     def userService
+    def trackService
 
 
     @RestApiMethod(description = "Load all users and their permissions", path = "/user/loadUsers", verb = RestApiVerb.POST)
@@ -258,6 +259,14 @@ class UserController {
                 userObject.put("tracklist", userOrganismPreference.nativeTrackList)
             }
 
+            if(permissionService.isUserGlobalAdmin(currentUser)){
+                String badCommonPath = trackService.checkCommonDataDirectory()
+                log.debug "bad common path ${badCommonPath}"
+                if(badCommonPath){
+                    userObject.badCommonPath = badCommonPath
+                }
+            }
+
             render userObject as JSON
         } else {
             def userObject = new JSONObject()
@@ -418,7 +427,7 @@ class UserController {
     @Transactional
     def inactivateUser() {
         try {
-            log.info "Removing user"
+            log.info "Inactivating user"
             JSONObject dataObject = permissionService.handleInput(request, params)
             User user = null
             if (dataObject.has('userId')) {
@@ -464,7 +473,7 @@ class UserController {
         } catch (e) {
             log.error(e.fillInStackTrace())
             JSONObject jsonObject = new JSONObject()
-            jsonObject.put(FeatureStringEnum.ERROR.value, "Failed to delete the user " + e.message)
+            jsonObject.put(FeatureStringEnum.ERROR.value, "Failed to inactivate the user " + e.message+". Remove users and groups first.")
             render jsonObject as JSON
         }
     }
@@ -504,7 +513,7 @@ class UserController {
             // allow delete a user if the current user is global admin or the current user is the creator of the user
             if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN) && !(creatorMetaData && currentUser.id.toString() == creatorMetaData)) {
                 //render status: HttpStatus.UNAUTHORIZED
-                def error = [error: 'not authorized to delete the user']
+                def error = [error: 'not authorized to activate the user']
                 log.error(error.error)
                 render error as JSON
                 return
@@ -518,7 +527,7 @@ class UserController {
         } catch (e) {
             log.error(e.fillInStackTrace())
             JSONObject jsonObject = new JSONObject()
-            jsonObject.put(FeatureStringEnum.ERROR.value, "Failed to delete the user " + e.message)
+            jsonObject.put(FeatureStringEnum.ERROR.value, "Failed to activate the user " + e.message)
             render jsonObject as JSON
         }
     }

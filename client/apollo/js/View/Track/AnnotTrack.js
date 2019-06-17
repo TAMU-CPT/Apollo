@@ -330,7 +330,11 @@ define([
                         filteredTrack.type = trackConfig.type;
                         filteredTrack.category = trackConfig.category;
                         filteredTrack.urlTemplate = trackConfig.urlTemplate;
+                        filteredTrack.storeClass = trackConfig.storeClass;
                         filteredTrack.visible = visible;
+                        if(trackConfig.apollo){
+                            filteredTrack.apollo = trackConfig.apollo;
+                        }
                         filteredTrackList.push(filteredTrack);
                     }
 
@@ -691,7 +695,7 @@ define([
                      * setting up annotation resizing via pulling of left/right edges but if
                      * subfeature is not selectable, do not bind mouse down
                      */
-                    if (subdiv && subdiv != null && (!this.selectionManager.unselectableTypes[subfeature.get('type')])) {
+                    if (subdiv && (!this.selectionManager.unselectableTypes[subfeature.get('type')])) {
                         $(subdiv).bind("mousedown", this.annotMouseDown);
                     }
                 }
@@ -852,7 +856,7 @@ define([
                 event = event || window.event;
                 var elem = (event.currentTarget || event.srcElement);
                 var featdiv = this.getLowestFeatureDiv(elem);
-                if (featdiv && (featdiv != null)) {
+                if (featdiv) {
                     if (this.verbose_click) {
                         console.log(featdiv);
                     }
@@ -892,13 +896,13 @@ define([
                         subfeats.push(featToAdd);
                     }
                     else {  // top-level feature
-                        var source_track = feature_record.track;
+                        var feat = JSONUtils.handleCigarSubFeatures(feat, annot.get('type'));
                         var subs = feat.get('subfeatures');
                         if (subs && subs.length > 0) {  // top-level
                             // feature with
                             // subfeatures
-                            for (var i = 0; i < subs.length; ++i) {
-                                var subfeat = subs[i];
+                            for (var j = 0; j < subs.length; ++j) {
+                                var subfeat = subs[j];
                                 var featStrand = subfeat.get('strand');
                                 var featToAdd = subfeat;
                                 if (featStrand != annotStrand) {
@@ -907,7 +911,6 @@ define([
                                 }
                                 subfeats.push(featToAdd);
                             }
-                            // $.merge(subfeats, subs);
                         }
                         else {  // top-level feature without subfeatures
                             // make exon feature
@@ -1044,9 +1047,9 @@ define([
                         variantSelectionRecords.push(selection_records[i]);
                         continue;
                     }
-                    else if (type == "indel") {
+                    else if (type == "INDEL") {
                         // feature is an indel and is not supported
-                        console.log("unsupported variant type: indel");
+                        console.log("unsupported variant type: INDEL");
                         continue;
                     }
 
@@ -1100,7 +1103,6 @@ define([
                     var keys = Object.keys(parentFeatures);
                     var singleParent = keys.length === 1;
                     var featureToAdd;
-                    console.log('preccing new feature',parentFeatures)
                     if (singleParent) {
                         featureToAdd = JSONUtils.makeSimpleFeature(parentFeatures[keys[0]]);
                     }
@@ -1108,6 +1110,7 @@ define([
                         featureToAdd = new SimpleFeature({data: {strand: strand}});
                     }
                     if (!featureToAdd.get('name')) {
+                        // TODO: We can't guarantee that the featureToAdd has an id, this may end up undefined.
                         featureToAdd.set('name', featureToAdd.get('id'));
                     }
                     featureToAdd.set('orig_id', featureToAdd.get('id'));
@@ -1171,15 +1174,13 @@ define([
                     }
 
                     var afeat ;
-                    featureToAdd = JSONUtils.handleCigarSubFeatures(featureToAdd,biotype);
-                    console.log('adding',featureToAdd)
-
                     if(biotype === 'mRNA'){
                         featureToAdd = JSONUtils.handleCigarSubFeatures(featureToAdd,biotype);
                         afeat = JSONUtils.createApolloFeature(featureToAdd, biotype, true);
                         featuresToAdd.push(afeat);
                     }
                     else if (biotype.endsWith('RNA')){
+                        featureToAdd = JSONUtils.handleCigarSubFeatures(featureToAdd,biotype);
                         target_track.createGenericAnnotations([featureToAdd], biotype, null , 'gene');
                     }
                     else {
@@ -1252,7 +1253,7 @@ define([
                                 function (seq) {
                                     if (seq.toUpperCase() != dragfeat.get('reference_allele').toUpperCase()) {
                                         var variantPosition = dragfeat.get('start') + 1;
-                                        var message = "Cannot add variant at position: " + variantPosition + " since the REF allele does not match the genomic residues at that position."
+                                        var message = "Cannot add variant at position: " + variantPosition + " since the REF allele does not match the genomic residues at that position.";
                                         target_track.openDialog( 'Cannot Add Variant', message );
                                     }
                                     else {
@@ -1321,7 +1322,6 @@ define([
                         featureToAdd.set("start", fmin);
                         featureToAdd.set("end", fmax);
                         var afeat = JSONUtils.createApolloFeature(featureToAdd, type, true, subfeatType);
-                        console.log('created apollo feature',afeat)
                         if (topLevelType) {
                             var topLevel = {};
                             topLevel.orig_id = dojo.clone(afeat.id);
@@ -2527,7 +2527,7 @@ define([
                     innerHTML: "Delete",
                     'class': "annotation_info_editor_button"
                 }, pubmedIdButtons);
-                var pubmedss = "Use this field to indicate that this genomic element has been mentioned in a publication, or that a publication supports your functional annotations using GO IDs. Do not use this field to list publications containing related or similar genomic elements from other species that you may have used as evidence for this annotation.";
+                var pubmedss = "Use this field to indicate that this genomic element has been mentioned in a publication, or that a publication supports your functional annotations. Do not use this field to list publications containing related or similar genomic elements from other species that you may have used as evidence for this annotation.";
                 new Tooltip({
                     connectId: pubmedIdsDiv,
                     label: pubmedss,
@@ -2664,7 +2664,7 @@ define([
                     if (!node) {
                         setTimeout(function () {
                             initTable(domNode, tableNode, table, timeout);
-                            return;
+
                         }, timeout);
                         return;
                     }
@@ -4406,7 +4406,7 @@ define([
                     innerHTML: "Delete",
                     'class': "annotation_info_editor_button"
                 }, pubmedIdButtons);
-                var pubmedss = "Use this field to indicate that this genomic element has been mentioned in a publication, or that a publication supports your functional annotations using GO IDs. Do not use this field to list publications containing related or similar genomic elements from other species that you may have used as evidence for this annotation.";
+                var pubmedss = "Use this field to indicate that this genomic element has been mentioned in a publication, or that a publication supports your functional annotations. Do not use this field to list publications containing related or similar genomic elements from other species that you may have used as evidence for this annotation.";
                 new Tooltip({
                     connectId: pubmedIdsDiv,
                     label: pubmedss,
@@ -4528,7 +4528,6 @@ define([
                     if (!node) {
                         setTimeout(function () {
                             initTable(domNode, tableNode, table, timeout);
-                            return;
                         }, timeout);
                         return;
                     }
@@ -5634,8 +5633,7 @@ define([
                     current = selectedIndex;
                     cleanUpHistoryTable();
                     displayHistory();
-                };
-
+                }
                 var cleanUpHistoryTable = function() {
                     while (historyRows.hasChildNodes()) {
                         historyRows.removeChild(historyRows.lastChild);
@@ -5978,8 +5976,8 @@ define([
                         handleAs: "text",
                         timeout: 5000 * 1000, // Time in milliseconds
                         load: function (response, ioArgs) {
-                            var textAreaContent = response;
-                            dojo.attr(textArea, "innerHTML", textAreaContent);
+                            // Response is the textarea content;
+                            dojo.attr(textArea, "innerHTML", response);
                         },
                         // The ERROR function will be called in an error case.
                         error: function (response, ioArgs) {
@@ -6279,7 +6277,7 @@ define([
                             break;
                         }
                     }
-                };
+                }
                 if (selected && (selected.length > 0)) {
 
 
@@ -6351,7 +6349,7 @@ define([
                             break;
                         }
                     }
-                };
+                }
                 if (selected && (selected.length > 0)) {
 
 
