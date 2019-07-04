@@ -27,6 +27,9 @@ RUN curl -L https://github.com/GMOD/Apollo/archive/${WEBAPOLLO_VERSION}.tar.gz |
 COPY docker-files/build.sh /bin/build.sh
 ADD docker-files/docker-apollo-config.groovy /apollo/apollo-config.groovy
 
+ADD docker-files/createenv.sh /createenv.sh
+CMD "/createenv.sh"
+
 RUN chown -R apollo:apollo /apollo
 RUN curl -s "http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/blat/blat" -o /usr/local/bin/blat
 RUN chmod +x /usr/local/bin/blat
@@ -52,8 +55,8 @@ RUN wget --quiet https://github.com/erasche/chado-schema-builder/releases/downlo
 	gunzip /chado.sql.gz
 
 
-ADD docker-files/createenv.sh /createenv.sh
-CMD "/createenv.sh"
+#ADD docker-files/createenv.sh /createenv.sh
+#CMD "/createenv.sh"
 
 ADD docker-files/launch.sh /launch.sh
 CMD "/launch.sh"
