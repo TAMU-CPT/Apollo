@@ -290,7 +290,7 @@ class AnnotatorController {
  * @param sort
  * @return
  */
-    def findAnnotationsForSequence(String sequenceName, String request, String annotationName, String type, String user, Integer offset, Integer max, String sortorder, String sort, String clientToken) {
+    def findAnnotationsForSequence(String sequenceName, String request, String annotationName, String type, String user, Integer offset, Integer max, String sortorder, String sort, String clientToken,Boolean showOnlyGoAnnotations) {
         try {
             JSONObject returnObject = createJSONFeatureContainer()
             returnObject.clientToken = clientToken
@@ -319,7 +319,9 @@ class AnnotatorController {
                         break
                     case "transposable_element": viewableTypes.add(TransposableElement.class.canonicalName)
                         break
-                    case "sequence_alteration": viewableTypes.add(SequenceAlteration.class.canonicalName)
+                    case "sequence_alteration":
+                        viewableTypes = requestHandlingService.viewableSequenceAlterationList
+                        break
                     default:
                         log.info "Type not found for annotation filter '${type}'"
                         viewableTypes = requestHandlingService.viewableAnnotationList + requestHandlingService.viewableSequenceAlterationList
@@ -346,6 +348,10 @@ class AnnotatorController {
                             order('name', sortorder)
                         }
                         eq('organism', organism)
+                    }
+                }
+                if( showOnlyGoAnnotations){
+                    goAnnotations{
                     }
                 }
                 if (sort == "name") {
@@ -383,6 +389,9 @@ class AnnotatorController {
                 }
                 if (sort == "date") {
                     order('lastUpdated', sortorder)
+                }
+                if( showOnlyGoAnnotations){
+                    fetchMode 'goAnnotations', FetchMode.JOIN
                 }
                 fetchMode 'owners', FetchMode.JOIN
                 fetchMode 'featureLocations', FetchMode.JOIN
