@@ -77,6 +77,13 @@ environments {
     }
 }
 
+if (System.getenv("WEBAPOLLO_DEBUG") == "true") {
+    log4j.main = {
+        debug "grails.app"
+    }
+}
+
+
 apollo {
     common_data_directory = System.getenv("WEBAPOLLO_COMMON_DATA") ? System.getenv("WEBAPOLLO_COMMON_DATA") : "/data/temporary/apollo_data"
     default_minimum_intron_size = System.getenv("WEBAPOLLO_MINIMUM_INTRON_SIZE") ? System.getenv("WEBAPOLLO_MINIMUM_INTRON_SIZE").toInteger() : 1
@@ -93,6 +100,8 @@ apollo {
     translation_table = "/config/translation_tables/ncbi_" + (System.getenv("WEBAPOLLO_TRANSLATION_TABLE") ?: "1") + "_translation_table.txt"
     get_translation_code = System.getenv("WEBAPOLLO_TRANSLATION_TABLE") ? System.getenv("WEBAPOLLO_TRANSLATION_TABLE").toInteger() : 1
 
+    fa_to_twobit_exe = "/usr/local/bin/faToTwoBit" // automatically loaded // https://genome.ucsc.edu/goldenPath/help/blatSpec.html
+
     // TODO: should come from config or via preferences database
     splice_donor_sites = System.getenv("WEBAPOLLO_SPLICE_DONOR_SITES") ? System.getenv("WEBAPOLLO_SPLICE_DONOR_SITES").split(",") : ["GT"]
     splice_acceptor_sites = System.getenv("WEBAPOLLO_SPLICE_ACCEPTOR_SITES") ? System.getenv("WEBAPOLLO_SPLICE_ACCEPTOR_SITES").split(",") : ["AG"]
@@ -106,6 +115,18 @@ apollo {
         firstName = System.getenv("APOLLO_ADMIN_FIRST_NAME") ?: "Ad"
         lastName = System.getenv("APOLLO_ADMIN_LAST_NAME") ?: "min"
     }
+    authentications = [
+        [
+            "name":"Remote User Authenticator",
+            "className":"remoteUserAuthenticatorService",
+            "active": System.getenv("WEBAPOLLO_REMOTE_USER_AUTH") ?: false
+        ],
+        [
+            "name":"Username Password Authenticator",
+            "className":"usernamePasswordAuthenticatorService",
+            "active": System.getenv("WEBAPOLLO_USER_PASSWORD_AUTH") ?: true
+        ]
+    ]
 }
 
 jbrowse {
