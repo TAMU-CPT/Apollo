@@ -390,6 +390,9 @@ apollo {
 grails.plugin.databasemigration.updateOnStart = true
 grails.plugin.databasemigration.updateOnStartFileNames = ['changelog.groovy']
 
+// from https://github.com/zyro23/grails-spring-websocket/tree/1.3.x#configuration to avoid breaking websockets over network connections
+grails.plugin.springwebsocket.allowedOrigins = ["*"]
+
 // from: http://grails.org/plugin/audit-logging
 auditLog {
     //note, this disables the audit log
