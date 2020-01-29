@@ -162,7 +162,7 @@ grails {
     plugin {
         springwebsocket {
             // quoted comma separated list in [] per https://github.com/zyro23/grails-spring-websocket/tree/1.3.x#configuration
-            allowedOrigins = System.getenv("WEBSOCKET_ALLOWEDORIGINS") ?: []
+            allowedOrigins = [System.getenv("WEBSOCKET_ALLOWEDORIGINS")] ?: []
         }
     }
 }
