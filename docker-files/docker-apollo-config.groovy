@@ -80,6 +80,8 @@ environments {
 if (System.getenv("WEBAPOLLO_DEBUG") == "true") {
     log4j.main = {
         debug "grails.app"
+        debug "org.bbop.apollo"
+        debug "org.springframework"
     }
 }
 
