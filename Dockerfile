@@ -50,4 +50,7 @@ RUN rm -rf ${CATALINA_HOME}/webapps/* && \
 
 ADD docker-files/createenv.sh /createenv.sh
 ADD docker-files/launch.sh /launch.sh
+
+EXPOSE 8080
+
 CMD "/launch.sh"
