@@ -90,6 +90,7 @@ environments {
 if (checkBooleanEnvironment("WEBAPOLLO_DEBUG",false)) {
     log4j.main = {
         debug "grails.app"
+        debug "org.springframework"
     }
 }
 
@@ -175,6 +176,15 @@ jbrowse {
             branch = 'master'
             alwaysRecheck = "true"
             alwaysPull = "true"
+        }
+    }
+}
+
+grails {
+    plugin {
+        springwebsocket {
+            // quoted comma separated list in [] per https://github.com/zyro23/grails-spring-websocket/tree/1.3.x#configuration
+            allowedOrigins = [System.getenv("WEBSOCKET_ALLOWEDORIGINS")] ?: []
         }
     }
 }
