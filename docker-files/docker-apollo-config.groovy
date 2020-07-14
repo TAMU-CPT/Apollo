@@ -89,7 +89,13 @@ environments {
 
 if (checkBooleanEnvironment("WEBAPOLLO_DEBUG",false)) {
     log4j.main = {
-        debug "grails.app"
+        // basic Apollo app logging
+        warn "grails.app"
+        debug "org.bbop.apollo"
+        // database level logging
+        trace "org.hibernate.type"
+        debug "org.hibernate.SQL"
+        // websocket level logging
         debug "org.springframework"
     }
 }
