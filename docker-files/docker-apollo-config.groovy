@@ -93,8 +93,8 @@ if (checkBooleanEnvironment("WEBAPOLLO_DEBUG",false)) {
         warn "grails.app"
         debug "org.bbop.apollo"
         // database level logging
-        trace "org.hibernate.type"
-        debug "org.hibernate.SQL"
+//        trace "org.hibernate.type"
+//        debug "org.hibernate.SQL"
         // websocket level logging
         debug "org.springframework"
     }
