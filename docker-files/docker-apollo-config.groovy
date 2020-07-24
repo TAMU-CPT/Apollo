@@ -96,7 +96,8 @@ if (checkBooleanEnvironment("WEBAPOLLO_DEBUG",false)) {
 //        trace "org.hibernate.type"
 //        debug "org.hibernate.SQL"
         // websocket level logging
-        debug "org.springframework"
+        warn "org.springframework"
+        debug "org.springframework.web"
     }
 }
 
