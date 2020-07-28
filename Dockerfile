@@ -10,6 +10,11 @@ ENV CATALINA_HOME /usr/share/tomcat9
 ENV CATALINA_BASE /var/lib/tomcat9
 ENV CONTEXT_PATH ROOT
 ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64
+# memory settings for TOMCAT suggested from apollo docs
+ENV CATALINA_OPTS "-Xms512m -Xmx2g \
+        -XX:+CMSClassUnloadingEnabled \
+        -XX:+CMSPermGenSweepingEnabled \
+        -XX:+UseConcMarkSweepGC"
 
 RUN apt-get -qq update --fix-missing && \
 	apt-get --no-install-recommends -y install \
