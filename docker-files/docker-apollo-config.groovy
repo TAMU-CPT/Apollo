@@ -146,12 +146,6 @@ jbrowse {
         branch = "1.16.9-release"
     }
     plugins {
-        ScreenShotPlugin{
-            git = 'https://github.com/bhofmei/jbplugin-screenshot.git'
-            branch = 'master'
-            alwaysRecheck = "true"
-            alwaysPull = "true"
-        }
         ColorByCDS{
             git = 'https://github.com/scottcain/colorbycds.git'
             branch = 'master'
@@ -170,11 +164,12 @@ jbrowse {
             alwaysRecheck = "true"
             alwaysPull = "true"
         }
-        WormbaseGlyphs{
-            git = 'https://github.com/nathandunn/WormbaseGlyphs.git'
+        BlastView {
+            included = checkBooleanEnvironment("WEBAPOLLO_JBROWSE_PLUGIN_BLASTVIEW",false)
+            git = 'https://github.com/TAMU-CPT/blastview'
             branch = 'master'
             alwaysRecheck = "true"
             alwaysPull = "true"
-        }
+        } 
     }
 }
