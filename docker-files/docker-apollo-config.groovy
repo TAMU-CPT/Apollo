@@ -166,7 +166,7 @@ jbrowse {
         }
         BlastView {
             // included = checkBooleanEnvironment("WEBAPOLLO_JBROWSE_PLUGIN_BLASTVIEW",false)
-            git = 'https://github.com/TAMU-CPT/blastview'
+            git = 'https://github.com/TAMU-CPT/blastview.git'
             branch = 'master'
             alwaysRecheck = "true"
             alwaysPull = "true"
