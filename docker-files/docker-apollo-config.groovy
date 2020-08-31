@@ -146,7 +146,7 @@ jbrowse {
         branch = "1.16.9-release"
     }
     plugins {
-        /*ColorByCDS{
+        ColorByCDS{
             git = 'https://github.com/scottcain/colorbycds.git'
             branch = 'master'
             alwaysRecheck = "true"
@@ -163,7 +163,7 @@ jbrowse {
             branch = 'master'
             alwaysRecheck = "true"
             alwaysPull = "true"
-        }*/
+        }
         GCContent {
             git = 'https://github.com/elsiklab/gccontent.git'
             branch = 'master'
