@@ -4,7 +4,11 @@
         "pluginsDir" : "./plugins/WebApollo",
          "location" : "./plugins/WebApollo/js",
          "name" : "WebApollo"
-      }
+      },
+      {
+         "location" : "./plugins/GCContent",
+         "name" : "GCContent"
+      },
    ],
     "share_link" : 0,
     "tracks" : [
@@ -145,7 +149,16 @@
          "label" : "Annotations",
          "type" : "WebApollo/View/Track/AnnotTrack",
          "subfeatures" : 1
-      }
+      },
+      {
+        "storeClass" : "JBrowse/Store/SeqFeature/SequenceChunks",
+        "type": "GCContent/View/Track/GCContentXY",
+        "label": "GC Skew",
+        "urlTemplate" : "../../../data/seq/{refseq_dirpath}/{refseq}-",
+        "gcMode": "skew",
+        "min_score": -1,
+        "bicolor_pivot": 0
+      },
     ],
    "favicon" : "./plugins/WebApollo/img/webapollo_favicon.ico",
    "alwaysOnTracks" : "DNA,Annotations",
