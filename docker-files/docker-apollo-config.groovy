@@ -146,7 +146,7 @@ jbrowse {
         branch = "1.16.9-release"
     }
     plugins {
-        ColorByCDS{
+        /*ColorByCDS{
             git = 'https://github.com/scottcain/colorbycds.git'
             branch = 'master'
             alwaysRecheck = "true"
@@ -163,9 +163,14 @@ jbrowse {
             branch = 'master'
             alwaysRecheck = "true"
             alwaysPull = "true"
+        }*/
+        GCContent {
+            git = 'https://github.com/elsiklab/gccontent.git'
+            branch = 'master'
+            alwaysRecheck = "true"
+            alwaysPull = "true"
         }
         BlastView {
-            // included = checkBooleanEnvironment("WEBAPOLLO_JBROWSE_PLUGIN_BLASTVIEW",false)
             git = 'https://github.com/TAMU-CPT/blastview.git'
             branch = 'master'
             alwaysRecheck = "true"
