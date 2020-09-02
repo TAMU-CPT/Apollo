@@ -112,9 +112,24 @@ apollo {
     translation_table = "/config/translation_tables/ncbi_" + (System.getenv("WEBAPOLLO_TRANSLATION_TABLE") ?: "1") + "_translation_table.txt"
     get_translation_code = System.getenv("WEBAPOLLO_TRANSLATION_TABLE") ? System.getenv("WEBAPOLLO_TRANSLATION_TABLE").toInteger() : 1
 
+    // BLAT config from https://genomearchitect.readthedocs.io/en/latest/Configure.html#main-configuration
     fa_to_twobit_exe = "/usr/local/bin/faToTwoBit" // automatically loaded // https://genome.ucsc.edu/goldenPath/help/blatSpec.html
-
+    sequence_search_tools = [
+                blat_nuc : [
+                        search_exe  : "/usr/local/bin/blat",
+                        search_class: "org.bbop.apollo.sequence.search.blat.BlatCommandLineNucleotideToNucleotide",
+                        name        : "Blat nucleotide",
+                        params      : ""
+                ],
+                blat_prot: [
+                        search_exe  : "/usr/local/bin/blat",
+                        search_class: "org.bbop.apollo.sequence.search.blat.BlatCommandLineProteinToNucleotide",
+                        name        : "Blat protein",
+                        params      : ""
+                ]
+        ]
     // TODO: should come from config or via preferences database
+    calculate_non_canonical_splice_sites = false 
     splice_donor_sites = System.getenv("WEBAPOLLO_SPLICE_DONOR_SITES") ? System.getenv("WEBAPOLLO_SPLICE_DONOR_SITES").split(",") : ["GT"]
     splice_acceptor_sites = System.getenv("WEBAPOLLO_SPLICE_ACCEPTOR_SITES") ? System.getenv("WEBAPOLLO_SPLICE_ACCEPTOR_SITES").split(",") : ["AG"]
     gff3.source = System.getenv("WEBAPOLLO_GFF3_SOURCE") ?: "."
