@@ -6,6 +6,13 @@ Features
 
 - Add option to suppress calculation of non-canonical splice site [2509](https://github.com/GMOD/Apollo/issues/2509).
 
+Bug Fixes
+
+- BLAT search should send annotation creation results to the proper reference sequence [2514](https://github.com/GMOD/Apollo/issues/2514).
+
+Infrastructure Changes
+
+- Upgrade to [JBrowse 1.16.10](https://github.com/GMOD/jbrowse/releases/tag/1.16.10-release)
 
 
 ## 2.6.1
