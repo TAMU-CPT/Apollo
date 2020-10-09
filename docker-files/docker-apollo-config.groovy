@@ -162,12 +162,12 @@ jbrowse {
         branch = "1.16.10-release"
     }
     plugins {
-        /*ColorByCDS{
+        ColorByCDS{
             git = 'https://github.com/scottcain/colorbycds.git'
             branch = 'master'
             alwaysRecheck = "true"
             alwaysPull = "true"
-        }*/
+        }
         MAFViewer{
             git = 'https://github.com/cmdcolin/mafviewer.git'
             branch = 'master'
