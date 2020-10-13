@@ -5,7 +5,17 @@
 Features
 
 - Add option to suppress calculation of non-canonical splice site [2509](https://github.com/GMOD/Apollo/issues/2509).
+- Added the ability to sync the gene and transcript name with the click of a button [2519](https://github.com/GMOD/Apollo/issues/2519).
 
+Bug Fixes
+
+- BLAT search should send annotation creation results to the proper reference sequence [2514](https://github.com/GMOD/Apollo/issues/2514).
+- Properly handle Shine_Dalgarno sequences when added as part of gene model [2515](https://github.com/GMOD/Apollo/issues/2515).
+- Now able to resize terminators by dragging  [2521](https://github.com/GMOD/Apollo/issues/2521).
+
+Infrastructure Changes
+
+- Upgrade to [JBrowse 1.16.10](https://github.com/GMOD/jbrowse/releases/tag/1.16.10-release)
 
 
 ## 2.6.1

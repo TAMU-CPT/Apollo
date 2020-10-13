@@ -514,9 +514,12 @@ public class AnnotatorPanel extends Composite {
                 statusField.setVisible(true);
             }
         });
-
-
     }
+
+    AnnotationInfo getCurrentGene(){
+        return geneDetailPanel.getInternalAnnotationInfo();
+    }
+
     void selectTranscriptPanel() {
         AnnotationInfo selectedObject = singleSelectionModel.getSelectedObject();
         updateAnnotationInfo(selectedObject);
@@ -609,6 +612,7 @@ public class AnnotatorPanel extends Composite {
         typeList.addItem("Pseudogene");
         typeList.addItem("Transposable Element", "transposable_element");
         typeList.addItem("Terminator", "terminator");
+        typeList.addItem("Shine Dalgarno sequence", "Shine_Dalgarno_sequence");
         typeList.addItem("Repeat Region", "repeat_region");
         typeList.addItem("Variant", "sequence_alteration");
     }
@@ -1096,7 +1100,7 @@ public class AnnotatorPanel extends Composite {
     public void displayFeature(int featureIndex) {
         AnnotationInfo annotationInfo = dataGrid.getVisibleItem(Math.abs(dataGrid.getVisibleRange().getStart() - featureIndex));
         String type = annotationInfo.getType();
-        if (type.equals("transposable_element") || type.equals("repeat_region") || type.equals("terminator")) {
+        if (type.equals("transposable_element") || type.equals("repeat_region") || type.equals("terminator") || type.equals("Shine_Dalgarno_sequence") ) {            // do nothing
             // do nothing
         } else {
             exonDetailPanel.updateData(annotationInfo);
