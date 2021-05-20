@@ -3,7 +3,7 @@ package org.bbop.apollo
 import grails.converters.JSON
 import groovy.json.JsonBuilder
 import org.apache.shiro.SecurityUtils
-import org.bbop.apollo.Feature
+import org.apache.shiro.session.Session
 import org.bbop.apollo.event.AnnotationEvent
 import org.bbop.apollo.event.AnnotationListener
 import org.bbop.apollo.gwt.shared.FeatureStringEnum
@@ -53,6 +53,9 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
     def annotationEditorService
     def organismService
     def jsonWebUtilityService
+    def cannedCommentService
+    def cannedAttributeService
+    def availableStatusService
     def brokerMessagingTemplate
 
 
@@ -105,7 +108,7 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
             render returnObject
         } else {
             def errorMessage = [message: "You must first login before editing"]
-            response.status = 401
+            response.status = HttpStatus.UNAUTHORIZED.value()
             render errorMessage as JSON
         }
     }
@@ -121,39 +124,38 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
         render jre as JSON
     }
 
-  @RestApiMethod(description = "Gets history for features", path = "/annotationEditor/getHistoryForFeatures", verb = RestApiVerb.POST)
-  @RestApiParams(params = [
-    @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
-    , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
-    , @RestApiParam(name = "sequence", type = "string", paramType = RestApiParamType.QUERY, description = "Sequence name")
-    , @RestApiParam(name = "features", type = "JSONArray", paramType = RestApiParamType.QUERY, description = "JSONArray of JSON feature objects unique names.")
-  ])
-  @Timed
-  def getHistoryForFeatures() {
-    log.debug "getHistoryForFeatures ${params}"
+    @RestApiMethod(description = "Gets history for features", path = "/annotationEditor/getHistoryForFeatures", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "sequence", type = "string", paramType = RestApiParamType.QUERY, description = "Sequence name")
+            , @RestApiParam(name = "features", type = "JSONArray", paramType = RestApiParamType.QUERY, description = "JSONArray of JSON feature objects unique names.")
+    ])
+    @Timed
+    def getHistoryForFeatures() {
+        log.debug "getHistoryForFeatures ${params}"
         JSONObject inputObject = permissionService.handleInput(request, params)
-        if(!inputObject.track && inputObject.sequence){
-          inputObject.track = inputObject.sequence  // support some legacy
+        if (!inputObject.track && inputObject.sequence) {
+            inputObject.track = inputObject.sequence  // support some legacy
         }
-        inputObject.put(FeatureStringEnum.USERNAME.value, SecurityUtils.subject.principal)
         JSONArray featuresArray = inputObject.getJSONArray(FeatureStringEnum.FEATURES.value)
-        permissionService.checkPermissions(inputObject, PermissionEnum.READ)
+        if(permissionService.hasPermissions(inputObject, PermissionEnum.READ)){
+            JSONObject historyContainer = jsonWebUtilityService.createJSONFeatureContainer();
+            historyContainer = featureEventService.generateHistory(historyContainer, featuresArray)
+            render historyContainer as JSON
+        }
+        else{
+            render status: HttpStatus.UNAUTHORIZED
+        }
 
-        JSONObject historyContainer = jsonWebUtilityService.createJSONFeatureContainer();
-        historyContainer = featureEventService.generateHistory(historyContainer, featuresArray)
-
-        render historyContainer as JSON
     }
 
 
     @RestApiMethod(description = "Returns a translation table as JSON", path = "/annotationEditor/getTranslationTable", verb = RestApiVerb.POST)
     @RestApiParams(params = [])
     def getTranslationTable() {
-        log.debug "getTranslationTable"
         JSONObject returnObject = permissionService.handleInput(request, params)
-        log.debug "return object ${returnObject as JSON}"
         Organism organism = preferenceService.getCurrentOrganismForCurrentUser(returnObject.getString(FeatureStringEnum.CLIENT_TOKEN.value))
-        log.debug "has organism ${organism}"
         // use the over-wridden one
         TranslationTable translationTable = organismService.getTranslationTable(organism)
 
@@ -165,10 +167,10 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
         JSONArray startProteins = new JSONArray()
         JSONArray stopProteins = new JSONArray()
 
-        for(String startCodon in translationTable.getStartCodons()){
+        for (String startCodon in translationTable.getStartCodons()) {
             startProteins.add(translationTable.getTranslationTable().get(startCodon))
         }
-        for(String stopCodon in translationTable.getStopCodons()){
+        for (String stopCodon in translationTable.getStopCodons()) {
             stopProteins.add(translationTable.getTranslationTable().get(stopCodon))
         }
 
@@ -218,6 +220,25 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
         }
     }
 
+    @RestApiMethod(description = "Set Shine_Dalgarno_sequence feature boundaries", path = "/annotationEditor/setShineDalgarnoBoundaries", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+        @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+        , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+        , @RestApiParam(name = "organism", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Organism ID or common name")
+        , @RestApiParam(name = "sequence", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Sequence name")
+        , @RestApiParam(name = "suppressHistory", type = "boolean", paramType = RestApiParamType.QUERY, description = "Suppress the history of this operation")
+        , @RestApiParam(name = "suppressEvents", type = "boolean", paramType = RestApiParamType.QUERY, description = "Suppress instant update of the user interface")
+        , @RestApiParam(name = "features", type = "JSONArray", paramType = RestApiParamType.QUERY, description = "JSONArray of JSON feature objects described by https://github.com/GMOD/Apollo/blob/master/grails-app/domain/org/bbop/apollo/Feature.groovy")
+    ]
+    )
+    def setShineDalgarnoBoundaries() {
+        JSONObject inputObject = permissionService.handleInput(request, params)
+        if (permissionService.hasPermissions(inputObject, PermissionEnum.WRITE)) {
+            render requestHandlingService.setShineDalgarnoBoundaries(inputObject)
+        } else {
+            render status: HttpStatus.UNAUTHORIZED
+        }
+    }
 
     @RestApiMethod(description = "Add an exon", path = "/annotationEditor/addExon", verb = RestApiVerb.POST
     )
@@ -408,6 +429,7 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
             , @RestApiParam(name = "sequence", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Sequence name")
             , @RestApiParam(name = "organism", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Organism ID or common name")
             , @RestApiParam(name = "features", type = "JSONArray", paramType = RestApiParamType.QUERY, description = "JSONArray containing a single JSONObject feature that contains {'uniquename':'ABCD-1234'}")
+            , @RestApiParam(name = "allow_partials", type = "boolean", paramType = RestApiParamType.QUERY, description = "(optional) Default true.  Allow partials when setting longest ORF.")
     ])
     def setLongestOrf() {
         log.debug "setLongestORF ${params}"
@@ -443,6 +465,7 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
             , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
             , @RestApiParam(name = "sequence", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Sequence name")
             , @RestApiParam(name = "organism", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Organism ID or common name")
+            , @RestApiParam(name = "topLevel", type = "boolean", paramType = RestApiParamType.QUERY, description = "(optional) Whether to return top-level (e.g. gene) features, default false")
     ])
     def getFeatures() {
         JSONObject returnObject = permissionService.handleInput(request, params)
@@ -454,51 +477,6 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
             render error as JSON
             log.error(error.error)
         }
-    }
-
-    @Timed
-    def getInformation() {
-        JSONObject featureContainer = jsonWebUtilityService.createJSONFeatureContainer();
-        JSONObject inputObject = permissionService.handleInput(request, params)
-        if (!permissionService.checkPermissions(PermissionEnum.WRITE)) {
-            render new JSONObject() as JSON
-            return
-        }
-        JSONArray featuresArray = inputObject.getJSONArray(FeatureStringEnum.FEATURES.value)
-
-        for (int i = 0; i < featuresArray.size(); ++i) {
-            JSONObject jsonFeature = featuresArray.getJSONObject(i);
-            String uniqueName = jsonFeature.getString(FeatureStringEnum.UNIQUENAME.value);
-            Feature gbolFeature = Feature.findByUniqueName(uniqueName)
-            JSONObject info = new JSONObject();
-            info.put(FeatureStringEnum.UNIQUENAME.value, uniqueName)
-            info.put("time_accessioned", gbolFeature.lastUpdated)
-            info.put("owner", gbolFeature.owner ? gbolFeature.owner.username : "N/A")
-            info.put("location", gbolFeature.featureLocation.fmin)
-            if(gbolFeature instanceof SequenceAlterationArtifact){
-                info.put("length", gbolFeature.offset)
-            }
-            if(gbolFeature instanceof SequenceAlteration && gbolFeature.alterationResidue){
-                info.put("length", gbolFeature?.alterationResidue?.size())
-            }
-            String parentIds = "";
-            featureRelationshipService.getParentForFeature(gbolFeature).each {
-                if (parentIds.length() > 0) {
-                    parentIds += ", ";
-                }
-                parentIds += it.getUniqueName();
-            }
-            if (parentIds.length() > 0) {
-                info.put("parent_ids", parentIds);
-            }
-            def featureProperties = featurePropertyService.getNonReservedProperties(gbolFeature);
-            featureProperties.each {
-                info.put(it.tag, it.value);
-            }
-            featureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(info);
-        }
-
-        render featureContainer
     }
 
 
@@ -525,19 +503,6 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
         render returnObject
     }
 
-    /**
-     * @deprecated This will likely be removed
-     * @return
-     */
-//    def getOrganism() {
-//        JSONObject inputObject = permissionService.handleInput(request, params)
-//        Organism organism = preferenceService.getCurrentOrganismForCurrentUser(inputObject.getString(FeatureStringEnum.CLIENT_TOKEN.value))
-//        if (organism) {
-//            render organism as JSON
-//        } else {
-//            render new JSONObject()
-//        }
-//    }
 
     def getAnnotationInfoEditorConfiguration() {
         JSONObject annotationInfoEditorConfigContainer = new JSONObject();
@@ -728,6 +693,115 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
         }
     }
 
+    @RestApiMethod(description = "Get information about a sequence alteration object e.g,. features[{'uniquename':'someunqiuenamestring'}],", path = "/annotationEditor/getInformation", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+      @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+      , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+      , @RestApiParam(name = "array of uniquename features", type = "string", paramType = RestApiParamType.QUERY, description = "Uniquename of sequence alteration retrieve stringsgs embedded in a features array.")
+    ])
+    def getInformation() {
+        JSONObject featureContainer = jsonWebUtilityService.createJSONFeatureContainer();
+        JSONObject inputObject = permissionService.handleInput(request, params)
+        if (!permissionService.checkPermissions(PermissionEnum.WRITE)) {
+            render new JSONObject() as JSON
+            return
+        }
+        JSONArray featuresArray = inputObject.getJSONArray(FeatureStringEnum.FEATURES.value)
+
+        for (int i = 0; i < featuresArray.size(); ++i) {
+            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            String uniqueName = jsonFeature.getString(FeatureStringEnum.UNIQUENAME.value);
+            Feature gbolFeature = Feature.findByUniqueName(uniqueName)
+            JSONObject info = new JSONObject();
+            info.put(FeatureStringEnum.UNIQUENAME.value, uniqueName)
+            info.put("time_accessioned", gbolFeature.lastUpdated)
+            info.put("owner", gbolFeature.owner ? gbolFeature.owner.username : "N/A")
+            info.put("location", gbolFeature.featureLocation.fmin)
+            if(gbolFeature instanceof SequenceAlterationArtifact){
+                info.put("length", gbolFeature.offset)
+            }
+            if(gbolFeature instanceof SequenceAlteration && gbolFeature.alterationResidue){
+                info.put("length", gbolFeature?.alterationResidue?.size())
+            }
+            String parentIds = "";
+            featureRelationshipService.getParentForFeature(gbolFeature).each {
+                if (parentIds.length() > 0) {
+                    parentIds += ", ";
+                }
+                parentIds += it.getUniqueName();
+            }
+            if (parentIds.length() > 0) {
+                info.put("parent_ids", parentIds);
+            }
+            def featureProperties = featurePropertyService.getNonReservedProperties(gbolFeature);
+            featureProperties.each {
+                info.put(it.tag, it.value);
+            }
+            featureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(info);
+        }
+
+        render featureContainer
+    }
+
+    @RestApiMethod(description = "Get attribute (key/value) pairs for a feature", path = "/annotationEditor/getAttributes", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "sequence", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Sequence name")
+            , @RestApiParam(name = "organism", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Organism ID or common name")
+            , @RestApiParam(name = "feature", type = "JSONObject", paramType = RestApiParamType.QUERY, description = "object containing JSON objects with {'uniquename':'ABCD-1234','dbxrefs': [{'db': 'PMID', 'accession': '19448641'}]}.")
+    ])
+    def getAttributes() {
+        JSONObject inputObject = permissionService.handleInput(request, params)
+        if (permissionService.hasPermissions(inputObject, PermissionEnum.READ)) {
+            String uniqueName = inputObject.getString(FeatureStringEnum.UNIQUENAME.value)
+            Feature feature = Feature.findByUniqueName(uniqueName)
+            JSONArray attributes = new JSONArray()
+            feature.featureProperties.each {
+                if (it.ontologyId != Comment.ontologyId && it.tag != null ) {
+                    JSONObject attributeObject = new JSONObject()
+                    attributeObject.put(FeatureStringEnum.TAG.value, it.tag)
+                    attributeObject.put(FeatureStringEnum.VALUE.value, it.value)
+                    attributes.add(attributeObject)
+                }
+            }
+            JSONObject returnObject = new JSONObject()
+            returnObject.put(FeatureStringEnum.ATTRIBUTES.value, attributes)
+            render returnObject as JSON
+        } else {
+            render status: HttpStatus.UNAUTHORIZED
+        }
+    }
+
+    @RestApiMethod(description = "Get dbxrefs (db,id pairs) for a feature", path = "/annotationEditor/getDbxrefs", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "sequence", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Sequence name")
+            , @RestApiParam(name = "organism", type = "string", paramType = RestApiParamType.QUERY, description = "(optional) Organism ID or common name")
+            , @RestApiParam(name = "features", type = "JSONArray", paramType = RestApiParamType.QUERY, description = "JSONArray containing JSON objects with {'uniquename':'ABCD-1234','dbxrefs': [{'db': 'PMID', 'accession': '19448641'}]}.")
+    ])
+    def getDbxrefs() {
+        JSONObject inputObject = permissionService.handleInput(request, params)
+        if (permissionService.hasPermissions(inputObject, PermissionEnum.READ)) {
+            String uniqueName = inputObject.getString(FeatureStringEnum.UNIQUENAME.value)
+            Feature feature = Feature.findByUniqueName(uniqueName)
+            JSONArray annotations = new JSONArray()
+            feature.featureDBXrefs.each {
+                JSONObject dbxrefObject = new JSONObject()
+                dbxrefObject.put(FeatureStringEnum.TAG.value, it.db.name)
+                dbxrefObject.put(FeatureStringEnum.VALUE.value, it.accession)
+                annotations.add(dbxrefObject)
+
+            }
+            JSONObject returnObject = new JSONObject()
+            returnObject.put("annotations", annotations)
+            render returnObject as JSON
+        } else {
+            render status: HttpStatus.UNAUTHORIZED
+        }
+    }
+
     @RestApiMethod(description = "Set readthrough stop codon", path = "/annotationEditor/setReadthroughStopCodon", verb = RestApiVerb.POST)
     @RestApiParams(params = [
             @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
@@ -880,13 +954,13 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
             // create features from sequences
             JSONArray features = new JSONArray()
             inputObject.features = features
-            List<Long> sequenceList = inputObject.sequence.collect{
+            List<Long> sequenceList = inputObject.sequence.collect {
                 return Long.valueOf(it.id)
             }
             List<String> featureUniqueNames = Feature.executeQuery("select f.uniqueName from Feature f left join f.parentFeatureRelationships pfr  join f.featureLocations fl join fl.sequence s   where f.childFeatureRelationships is empty and s.id in (:sequenceList) and f.class in (:viewableTypes) ", [sequenceList: sequenceList, viewableTypes: requestHandlingService.viewableAnnotationList])
-            featureUniqueNames.each{
+            featureUniqueNames.each {
                 def jsonObject = new JSONObject()
-                jsonObject.put(FeatureStringEnum.UNIQUENAME.value,it)
+                jsonObject.put(FeatureStringEnum.UNIQUENAME.value, it)
                 features.add(jsonObject)
             }
             inputObject.remove("sequence")
@@ -964,7 +1038,7 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
         }
     }
 
-    @RestApiMethod(description = "Get sequences for features", path = "/annotationEditor/getSequences", verb = RestApiVerb.POST)
+    @RestApiMethod(description = "Get sequence for feature", path = "/annotationEditor/getSequence", verb = RestApiVerb.POST)
     @RestApiParams(params = [
             @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
             , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
@@ -975,14 +1049,17 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
     def getSequence() {
         log.debug "getSequence ${params.data}"
         JSONObject inputObject = permissionService.handleInput(request, params)
-        if (!permissionService.hasPermissions(inputObject, PermissionEnum.EXPORT)) {
-            render status: HttpStatus.UNAUTHORIZED
-            return
+        try{
+            permissionService.hasPermissions(inputObject, PermissionEnum.EXPORT)
+            JSONObject featureContainer = jsonWebUtilityService.createJSONFeatureContainer()
+            JSONObject sequenceObject = sequenceService.getSequenceForFeatures(inputObject)
+            featureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(sequenceObject)
+            render featureContainer
         }
-        JSONObject featureContainer = jsonWebUtilityService.createJSONFeatureContainer()
-        JSONObject sequenceObject = sequenceService.getSequenceForFeatures(inputObject)
-        featureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(sequenceObject)
-        render featureContainer
+        catch (AnnotationException ae) {
+            def error = [error: ae.message]
+            render error as JSON
+        }
     }
 
     @RestApiMethod(description = "Get sequences search tools", path = "/annotationEditor/getSequenceSearchTools")
@@ -992,6 +1069,27 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
         def obj = new JsonBuilder(set)
         def jre = ["sequence_search_tools": obj.content]
         render jre as JSON
+    }
+
+    private String getOntologyIdForType(String type) {
+        JSONObject cvTerm = new JSONObject()
+        if (type.toUpperCase() == Gene.cvTerm.toUpperCase()) {
+            JSONObject cvTermName = new JSONObject()
+            cvTermName.put(FeatureStringEnum.NAME.value, FeatureStringEnum.CV.value)
+            cvTerm.put(FeatureStringEnum.CV.value, cvTermName)
+            cvTerm.put(FeatureStringEnum.NAME.value, type)
+        } else {
+            JSONObject cvTermName = new JSONObject()
+            cvTermName.put(FeatureStringEnum.NAME.value, FeatureStringEnum.SEQUENCE.value)
+            cvTerm.put(FeatureStringEnum.CV.value, cvTermName)
+            cvTerm.put(FeatureStringEnum.NAME.value, type)
+        }
+        return featureService.convertJSONToOntologyId(cvTerm)
+    }
+
+    private List<FeatureType> getFeatureTypeListForType(String type) {
+        String ontologyId = getOntologyIdForType(type)
+        return FeatureType.findAllByOntologyId(ontologyId)
     }
 
     @RestApiMethod(description = "Get canned comments", path = "/annotationEditor/getCannedComments", verb = RestApiVerb.POST)
@@ -1006,7 +1104,74 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
             render status: HttpStatus.UNAUTHORIZED
             return
         }
-        render CannedComment.listOrderByComment() as JSON
+
+        Organism organism = Organism.findById(inputObject.getLong(FeatureStringEnum.ORGANISM_ID.value))
+        String type = inputObject.getString(FeatureStringEnum.TYPE.value)
+        List<FeatureType> featureTypeList = getFeatureTypeListForType(type)
+        render cannedCommentService.getCannedComments(organism, featureTypeList) as JSON
+    }
+
+    @RestApiMethod(description = "Get canned keys", path = "/annotationEditor/getCannedKeys", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+    ])
+    def getCannedKeys() {
+        log.debug "canned key data ${params.data}"
+        JSONObject inputObject = permissionService.handleInput(request, params)
+        if (!permissionService.hasPermissions(inputObject, PermissionEnum.READ)) {
+            render status: HttpStatus.UNAUTHORIZED
+            return
+        }
+
+        Organism organism = Organism.findById(inputObject.getLong(FeatureStringEnum.ORGANISM_ID.value))
+        String type = inputObject.getString(FeatureStringEnum.TYPE.value)
+        List<FeatureType> featureTypeList = getFeatureTypeListForType(type)
+        render cannedAttributeService.getCannedKeys(organism, featureTypeList) as JSON
+    }
+
+    @RestApiMethod(description = "Get canned values", path = "/annotationEditor/getCannedValues", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+    ])
+    def getCannedValues() {
+        log.debug "canned value data ${params.data}"
+        JSONObject inputObject = permissionService.handleInput(request, params)
+        if (!permissionService.hasPermissions(inputObject, PermissionEnum.READ)) {
+            render status: HttpStatus.UNAUTHORIZED
+            return
+        }
+
+        Organism organism = Organism.findById(inputObject.getLong(FeatureStringEnum.ORGANISM_ID.value))
+        String type = inputObject.getString(FeatureStringEnum.TYPE.value)
+        List<FeatureType> featureTypeList = getFeatureTypeListForType(type)
+        render cannedAttributeService.getCannedValues(organism, featureTypeList) as JSON
+    }
+
+    @RestApiMethod(description = "Get available statuses", path = "/annotationEditor/getAvailableStatuses", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "organismId", type = "string", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "type", type = "string", paramType = RestApiParamType.QUERY)
+    ])
+    def getAvailableStatuses() {
+        log.debug "get available statuses${params.data}"
+        JSONObject inputObject = permissionService.handleInput(request, params)
+        if (!permissionService.hasPermissions(inputObject, PermissionEnum.READ)) {
+            render status: HttpStatus.UNAUTHORIZED
+            return
+        }
+
+        Organism organism = Organism.findById(inputObject.getLong(FeatureStringEnum.ORGANISM_ID.value))
+        String type = null
+        if (inputObject.containsKey(FeatureStringEnum.TYPE.value)) {
+            type = inputObject.getString(FeatureStringEnum.TYPE.value)
+        }
+        List<FeatureType> featureTypeList = type ? getFeatureTypeListForType(type) : []
+        log.debug "type ${type} ${featureTypeList}"
+        render availableStatusService.getAvailableStatuses(organism, featureTypeList) as JSON
     }
 
     @RestApiMethod(description = "Search sequences", path = "/annotationEditor/searchSequences", verb = RestApiVerb.POST)
@@ -1016,13 +1181,16 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
     def searchSequence() {
         log.debug "sequenceSearch data ${params.data}"
         JSONObject inputObject = permissionService.handleInput(request, params)
-        if (!permissionService.hasPermissions(inputObject, PermissionEnum.READ)) {
-            render status: HttpStatus.UNAUTHORIZED
-            return
+        try{
+            permissionService.hasPermissions(inputObject, PermissionEnum.READ)
+            Organism organism = preferenceService.getCurrentOrganismForCurrentUser(inputObject.getString(FeatureStringEnum.CLIENT_TOKEN.value))
+            log.debug "Organism to string:  ${organism as JSON}"
+            render sequenceSearchService.searchSequence(inputObject, organism.getBlatdb())
         }
-        Organism organism = preferenceService.getCurrentOrganismForCurrentUser(inputObject.getString(FeatureStringEnum.CLIENT_TOKEN.value))
-        log.debug "Organism to string:  ${organism as JSON}"
-        render sequenceSearchService.searchSequence(inputObject, organism.getBlatdb())
+        catch (AnnotationException ae) {
+            def error = [error: ae.message]
+            render error as JSON
+        }
     }
 
 
@@ -1035,12 +1203,9 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
     def getGff3() {
         log.debug "getGff3 ${params.data}"
         JSONObject inputObject = permissionService.handleInput(request, params)
-        if (!permissionService.hasPermissions(inputObject, PermissionEnum.EXPORT)) {
-            render status: HttpStatus.UNAUTHORIZED
-            return
-        }
         try {
-            File outputFile = File.createTempFile("feature", ".gff3");
+            permissionService.hasPermissions(inputObject, PermissionEnum.EXPORT)
+            File outputFile = File.createTempFile("feature", ".gff3")
             sequenceService.getGff3ForFeature(inputObject, outputFile)
             Charset encoding = Charset.defaultCharset()
             byte[] encoded = Files.readAllBytes(Paths.get(outputFile.getAbsolutePath()))
@@ -1048,306 +1213,103 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
             outputFile.delete() // deleting temp file
             render gff3String
 
-        } catch (IOException e) {
-            log.debug("Cannot create a temp file for 'get GFF3' operation")
+        }
+        catch (AnnotationException ae) {
+            def error = [error: ae.message]
+            render error as JSON
+        }
+        catch (IOException e) {
+            log.debug("Cannot create a temp file for 'get GFF3' operation", e)
             e.printStackTrace()
         }
     }
 
     @RestApiMethod(description = "Get genes created or updated in the past, Returns JSON hash gene_name:organism", path = "/annotationEditor/getRecentAnnotations", verb = RestApiVerb.POST)
     @RestApiParams(params = [
-            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
-            ,@RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
-            ,@RestApiParam(name = "days", type = "Integer", paramType = RestApiParamType.QUERY, description = "Number of past days to retrieve annotations from.")
-
+        @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+        , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+        , @RestApiParam(name = "days", type = "Integer", paramType = RestApiParamType.QUERY, description = "(Required) Number of past days to retrieve annotations from.")
+        , @RestApiParam(name = "status", type = "String", paramType = RestApiParamType.QUERY, description = "(optional: default allow all) Pipe-separated list of filters (e.g., 'Finished|Published').  Use 'None' if you want annotations without a status. ")
     ])
 
-    def getRecentAnnotations(){
-    	JSONObject inputObject = permissionService.handleInput(request, params)
+    def getRecentAnnotations() {
+        JSONObject inputObject = permissionService.handleInput(request, params)
         if (!permissionService.hasPermissions(inputObject, PermissionEnum.EXPORT)) {
             render status: HttpStatus.UNAUTHORIZED
             return
         }
 
-        if(inputObject.get('days') instanceof Integer){
-        	JsonBuilder updatedGenes = annotationEditorService.recentAnnotations(inputObject.get('days'))
-        	render updatedGenes
-        }else{
-        	def error = [error: inputObject.get('days') + ' Param days must be an Integer']
+        if (inputObject.get('days') instanceof Integer) {
+            String filterString = inputObject.containsKey(FeatureStringEnum.STATUS.value) ? inputObject.getString(FeatureStringEnum.STATUS.value) : null
+            JsonBuilder updatedGenes = annotationEditorService.recentAnnotations(inputObject.getInt('days'),filterString)
+            render updatedGenes
+        } else {
+            def error = [error: inputObject.get('days') + ' Param days must be an Integer']
             render error as JSON
         }
     }
 
-
-    @Timed
-    def getAnnotationInfoEditorData() {
-        Sequence sequence
+    @RestApiMethod(description = "Gets edits made by the annotator, Returns JSON hash user:[edit_type]", path = "/annotationEditor/getAttributions", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "max", type = "integer", paramType = RestApiParamType.QUERY,description ="(optional, default 1000) Max number of change events to return from most recent to oldest.")
+    ])
+    def getAttributions() {
         JSONObject inputObject = permissionService.handleInput(request, params)
-        try {
-            sequence = permissionService.checkPermissions(inputObject, PermissionEnum.WRITE)
-        } catch (e) {
-            log.error(e)
-            render new JSONObject() as JSON
+        if (!permissionService.hasPermissions(inputObject, PermissionEnum.EXPORT)) {
+            render status: HttpStatus.UNAUTHORIZED
             return
         }
-
-        JSONArray featuresArray = inputObject.getJSONArray(FeatureStringEnum.FEATURES.value)
-        JSONObject returnObject = jsonWebUtilityService.createJSONFeatureContainer()
-
-        for (int i = 0; i < featuresArray.length(); ++i) {
-            JSONObject jsonFeature = featuresArray.getJSONObject(i);
-            log.debug "input json feature ${jsonFeature}"
-            String uniqueName = jsonFeature.get(FeatureStringEnum.UNIQUENAME.value)
-            Feature feature = Feature.findByUniqueName(uniqueName)
-            JSONObject newFeature = new JSONObject()
-
-            if (feature.symbol) {
-                newFeature.put(FeatureStringEnum.SYMBOL.value, feature.symbol)
-            }
-            if (feature.description) {
-                newFeature.put(FeatureStringEnum.DESCRIPTION.value, feature.description)
-            }
-
-            jsonFeature.put(FeatureStringEnum.ID.value, feature.id);
-            if (feature.getName() != null) {
-                newFeature.put(FeatureStringEnum.NAME.value, feature.getName());
-            }
-            newFeature.put(FeatureStringEnum.ID.value, feature.id)
-            newFeature.put(FeatureStringEnum.OWNER.value, featureService.generateOwnerString(feature));
-            newFeature.put(FeatureStringEnum.DATE_CREATION.value, feature.dateCreated.time);
-            newFeature.put(FeatureStringEnum.DATE_LAST_MODIFIED.value, feature.lastUpdated.time);
-            newFeature.put(FeatureStringEnum.TYPE.value, featureService.generateJSONFeatureStringForType(feature.ontologyId));
-
-            if (feature instanceof SequenceAlteration) {
-                newFeature.put(FeatureStringEnum.LOCATION.value, featureService.convertFeatureLocationToJSON(feature.featureLocation));
-
-                JSONArray alternateAllelesArray = new JSONArray()
-                log.debug("Features has altAlleles: ${feature.alleles}")
-                for (Allele allele : feature.alleles) {
-                    JSONObject alleleObject = new JSONObject()
-                    alleleObject.put(FeatureStringEnum.BASES.value, allele.bases)
-                    if (allele.alleleInfo) {
-                        JSONArray alleleInfoArray = new JSONArray()
-                        allele.alleleInfo.each { alleleInfo ->
-                            JSONObject alleleInfoObject = new JSONObject()
-                            alleleInfoObject.put(FeatureStringEnum.TAG.value, alleleInfo.tag)
-                            alleleInfoObject.put(FeatureStringEnum.VALUE.value, alleleInfo.value)
-                            alleleInfoArray.add(alleleInfoObject)
-                        }
-                        alleleObject.put(FeatureStringEnum.ALLELE_INFO.value, alleleInfoArray)
-                    }
-
-                    if (allele.reference) {
-                        newFeature.put(FeatureStringEnum.REFERENCE_ALLELE.value, alleleObject)
-                    }
-                    else {
-                        alternateAllelesArray.add(alleleObject)
-                    }
-                }
-                newFeature.put(FeatureStringEnum.ALTERNATE_ALLELES.value, alternateAllelesArray)
-
-                if (feature.variantInfo) {
-                    JSONArray variantInfoArray = new JSONArray()
-                    for (VariantInfo variantInfo : feature.variantInfo) {
-                        JSONObject variantInfoObject = new JSONObject()
-                        variantInfoObject.put(FeatureStringEnum.TAG.value, variantInfo.tag)
-                        variantInfoObject.put(FeatureStringEnum.VALUE.value, variantInfo.value)
-                        variantInfoArray.add(variantInfoObject)
-                    }
-                    newFeature.put(FeatureStringEnum.VARIANT_INFO.value, variantInfoArray)
-                }
-
-            }
-
-            if (feature.featureLocation) {
-                newFeature.put(FeatureStringEnum.SEQUENCE.value, feature.featureLocation.sequence.name);
-            }
-
-
-            List<FeatureType> featureTypeList = FeatureType.findAllByOntologyId(feature.ontologyId)
-
-            if (AvailableStatus.count > 0) {
-                if(feature.status){
-                    newFeature.put(FeatureStringEnum.STATUS.value, feature.status.value)
-                }
-                JSONArray availableStatuses = new JSONArray()
-                newFeature.put(FeatureStringEnum.AVAILABLE_STATUSES.value,availableStatuses)
-
-                List<AvailableStatus> availableStatusList = new ArrayList<>()
-                if (featureTypeList) {
-                    availableStatusList.addAll(AvailableStatus.executeQuery("select cc from AvailableStatus cc join cc.featureTypes ft where ft in (:featureTypeList) order by cc.value asc", [featureTypeList: featureTypeList]))
-                }
-                availableStatusList.addAll(AvailableStatus.executeQuery("select cc from AvailableStatus cc where cc.featureTypes is empty order by cc.value asc"))
-
-//                // if there are organism filters for these statuses for this organism, then apply them
-                List<AvailableStatusOrganismFilter> availableStatusOrganismFilters = AvailableStatusOrganismFilter.findAllByAvailableStatusInList(availableStatusList)
-                if (availableStatusOrganismFilters) {
-                    AvailableStatusOrganismFilter.findAllByOrganismAndAvailableStatusInList(sequence.organism, availableStatusList).each {
-                        availableStatuses.put(it.availableStatus.value)
-                        availableStatusList.remove(it.availableStatus)
-                    }
-                    availableStatusList.each {
-                        availableStatuses.put(it.value)
-                    }
-                }
-//                // otherwise ignore them
-                else {
-                    availableStatusList.each {
-                        availableStatuses.put(it.value)
-                    }
-                }
-
-            }
-
-
-            // TODO: add the rest of the attributes
-            if (configWrapperService.hasAttributes()) {
-                JSONArray properties = new JSONArray();
-                newFeature.put(FeatureStringEnum.NON_RESERVED_PROPERTIES.value, properties);
-                for (FeatureProperty property : featurePropertyService.getNonReservedProperties(feature)) {
-                    JSONObject jsonProperty = new JSONObject();
-                    jsonProperty.put(FeatureStringEnum.TAG.value, property.getTag());
-                    jsonProperty.put(FeatureStringEnum.VALUE.value, property.getValue());
-                    properties.put(jsonProperty);
-                }
-
-
-
-                List<CannedKey> cannedKeyList = new ArrayList<>()
-                JSONArray cannedKeys = new JSONArray();
-                newFeature.put(FeatureStringEnum.CANNED_KEYS.value, cannedKeys);
-                if (featureTypeList) {
-                    cannedKeyList.addAll(CannedKey.executeQuery("select cc from CannedKey cc join cc.featureTypes ft where ft in (:featureTypeList)", [featureTypeList: featureTypeList]))
-                }
-                cannedKeyList.addAll(CannedKey.executeQuery("select cc from CannedKey cc where cc.featureTypes is empty"))
-
-//                // if there are organism filters for these canned comments for this organism, then apply them
-                List<CannedKeyOrganismFilter> cannedKeyOrganismFilters = CannedKeyOrganismFilter.findAllByCannedKeyInList(cannedKeyList)
-                if (cannedKeyOrganismFilters) {
-                    CannedKeyOrganismFilter.findAllByOrganismAndCannedKeyInList(sequence.organism, cannedKeyList).each {
-                        cannedKeys.put(it.cannedKey.label)
-                    }
-                }
-//                // otherwise ignore them
-                else {
-                    cannedKeyList.each {
-                        cannedKeys.put(it.label)
-                    }
-                }
-
-                // handle canned Values
-                List<CannedValue> cannedValueList = new ArrayList<>()
-                JSONArray cannedValues = new JSONArray();
-                newFeature.put(FeatureStringEnum.CANNED_VALUES.value, cannedValues);
-                if (featureTypeList) {
-                    cannedValueList.addAll(CannedValue.executeQuery("select cc from CannedValue cc join cc.featureTypes ft where ft in (:featureTypeList)", [featureTypeList: featureTypeList]))
-                }
-                cannedValueList.addAll(CannedValue.executeQuery("select cc from CannedValue cc where cc.featureTypes is empty"))
-
-//                // if there are organism filters for these canned comments for this organism, then apply them
-                List<CannedValueOrganismFilter> cannedValueOrganismFilters = CannedValueOrganismFilter.findAllByCannedValueInList(cannedValueList)
-                if (cannedValueOrganismFilters) {
-                    CannedValueOrganismFilter.findAllByOrganismAndCannedValueInList(sequence.organism, cannedValueList).each {
-                        cannedValues.put(it.cannedValue.label)
-                    }
-                }
-//                // otherwise ignore them
-                else {
-                    cannedValueList.each {
-                        cannedValues.put(it.label)
-                    }
-                }
-            }
-            if (configWrapperService.hasDbxrefs() || configWrapperService.hasPubmedIds() || configWrapperService.hasGoIds()) {
-                JSONArray dbxrefs = new JSONArray();
-                newFeature.put(FeatureStringEnum.DBXREFS.value, dbxrefs);
-                for (DBXref dbxref : feature.featureDBXrefs) {
-                    JSONObject jsonDbxref = new JSONObject();
-                    jsonDbxref.put(FeatureStringEnum.DB.value, dbxref.getDb().getName());
-                    jsonDbxref.put(FeatureStringEnum.ACCESSION.value, dbxref.getAccession());
-                    dbxrefs.put(jsonDbxref);
-                }
-            }
-            if (configWrapperService.hasComments()) {
-                JSONArray comments = new JSONArray();
-                newFeature.put(FeatureStringEnum.COMMENTS.value, comments);
-                for (Comment comment : featurePropertyService.getComments(feature)) {
-                    comments.put(comment.value);
-                }
-
-                JSONArray cannedComments = new JSONArray();
-                newFeature.put(FeatureStringEnum.CANNED_COMMENTS.value, cannedComments);
-
-                List<CannedComment> cannedCommentList = new ArrayList<>()
-                if (featureTypeList) {
-                    cannedCommentList.addAll(CannedComment.executeQuery("select cc from CannedComment cc join cc.featureTypes ft where ft in (:featureTypeList)", [featureTypeList: featureTypeList]))
-                }
-                cannedCommentList.addAll(CannedComment.executeQuery("select cc from CannedComment cc where cc.featureTypes is empty"))
-
-                // if there are organism filters for these canned comments for this organism, then apply them
-                List<CannedCommentOrganismFilter> cannedCommentOrganismFilters = CannedCommentOrganismFilter.findAllByCannedCommentInList(cannedCommentList)
-                if (cannedCommentOrganismFilters) {
-                    CannedCommentOrganismFilter.findAllByOrganismAndCannedCommentInList(sequence.organism, cannedCommentList).each {
-                        cannedComments.put(it.cannedComment.comment)
-                    }
-                }
-                // otherwise ignore them
-                else {
-                    cannedCommentList.each {
-                        cannedComments.put(it.comment)
-                    }
-                }
-            }
-
-            JSONArray suggestedNames = new JSONArray();
-            newFeature.put(FeatureStringEnum.SUGGESTED_NAMES.value, suggestedNames);
-            List<SuggestedName> suggestedNameList = new ArrayList<>()
-            if (featureTypeList) {
-                suggestedNameList.addAll(SuggestedName.executeQuery("select cc from SuggestedName cc join cc.featureTypes ft where ft in (:featureTypeList)", [featureTypeList: featureTypeList]))
-            }
-            suggestedNameList.addAll(SuggestedName.executeQuery("select cc from SuggestedName cc where cc.featureTypes is empty"))
-
-            // if there are organism filters for these canned comments for this organism, then apply them
-            List<SuggestedNameOrganismFilter> suggestedNameOrganismFilters = SuggestedNameOrganismFilter.findAllBySuggestedNameInList(suggestedNameList)
-            if (suggestedNameOrganismFilters) {
-                SuggestedNameOrganismFilter.findAllByOrganismAndSuggestedNameInList(sequence.organism, suggestedNameList).each {
-                    suggestedNames.put(it.suggestedName.name)
-                }
-                suggestedNameList.each {
-                    suggestedNames.put(it.name)
-                }
-            }
-            // otherwise ignore them
-            else {
-                suggestedNameList.each {
-                    suggestedNames.put(it.name)
-                }
-            }
-
-            returnObject.getJSONArray(FeatureStringEnum.FEATURES.value).put(newFeature);
-        }
-
-
-        render returnObject
+        int max = inputObject.max ?: 1000
+        JSONObject attributions =  featureEventService.generateAttributions( max )
+        render attributions
     }
+
+
 
 
     @MessageMapping("/AnnotationNotification")
     @SendTo("/topic/AnnotationNotification")
     @Timed
     protected String annotationEditor(String inputString, Principal principal) {
+        log.debug("Web socket connected: ${inputString}")
         inputString = annotationEditorService.cleanJSONString(inputString)
         JSONObject rootElement = (JSONObject) JSON.parse(inputString)
         rootElement.put(FeatureStringEnum.USERNAME.value, principal.name)
 
         String operation = ((JSONObject) rootElement).get(REST_OPERATION)
+        log.debug "prinicial name ${principal?.name}"
 
         String operationName = underscoreToCamelCase(operation)
         log.debug "operationName: ${operationName}"
         def p = task {
             switch (operationName) {
+                case "currentUser":
+                    User user = permissionService.getCurrentUser(rootElement)
+                    return user as JSON
+            // test case
+                case "ping":
+                    return "pong"
+            // test case
+                case "broadcast":
+                    broadcastMessage("pong",principal?.name)
+                    break
+            // test case
                 case "logout":
-                    SecurityUtils.subject.logout()
+                    try {
+                        SecurityUtils.subject.logout()
+                    } catch (e) {
+                        log.warn "No thread, so sending through websocket instead ${e}"
+                    }
+                    finally {
+                        if(principal?.name){
+                            JSONObject jsonObject = new JSONObject()
+                            jsonObject.put(FeatureStringEnum.USERNAME.value,principal.name)
+                            jsonObject.put(REST_OPERATION,"logout")
+                            brokerMessagingTemplate.convertAndSend "/topic/AnnotationNotification/user/" + principal.name, jsonObject.toString()
+                        }
+                    }
                     break
                 case "setToDownstreamDonor": requestHandlingService.setDonor(rootElement, false)
                     break
@@ -1398,6 +1360,26 @@ class AnnotationEditorController extends AbstractApolloController implements Ann
             return sendError(ae, principal.name)
         }
 
+    }
+
+    /**
+     * Note: this is a test websocket method
+     * @param message
+     * @param username
+     * @return
+     */
+    protected def broadcastMessage(String message,String username){
+        println "bradcasting message: ${message}"
+        brokerMessagingTemplate.convertAndSend("/topic/AnnotationNotification", message)
+        println "broadcast message: ${message}"
+        if(username){
+            println "send error to user"
+            sendError(new RuntimeException("whoops"),username)
+            println "sent error to user"
+        }
+        println "sending annotation vent"
+        sendAnnotationEvent("annotation event of some kind")
+        println "sent annotation event"
     }
 
 // TODO: handle errors without broadcasting

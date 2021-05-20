@@ -7,16 +7,21 @@ import org.bbop.apollo.gwt.shared.FeatureStringEnum
 @Transactional(readOnly = true)
 class TranscriptService {
 
-    List<String> ontologyIds = [Transcript.ontologyId, SnRNA.ontologyId, MRNA.ontologyId, SnoRNA.ontologyId, MiRNA.ontologyId, TRNA.ontologyId, NcRNA.ontologyId, RRNA.ontologyId]
+    List<String> ontologyIds = [
+      Transcript.ontologyId, SnRNA.ontologyId, MRNA.ontologyId, SnoRNA.ontologyId,
+      MiRNA.ontologyId, TRNA.ontologyId, NcRNA.ontologyId, RRNA.ontologyId,
+      GuideRNA.ontologyId, RNasePRNA.ontologyId, TelomeraseRNA.ontologyId, SrpRNA.ontologyId, LncRNA.ontologyId,
+      RNaseMRPRNA.ontologyId, ScRNA.ontologyId, PiRNA.ontologyId, TmRNA.ontologyId, EnzymaticRNA.ontologyId,
+    ]
 
     // services
     def featureService
+    def featurePropertyService
     def featureRelationshipService
-    def exonService
     def nameService
     def nonCanonicalSplitSiteService
     def sequenceService
-    def featureEventService
+    def configWrapperService
 
     /** Retrieve the CDS associated with this transcript.  Uses the configuration to determine
      *  which child is a CDS.  The CDS object is generated on the fly.  Returns <code>null</code>
@@ -53,11 +58,11 @@ class TranscriptService {
      * @return Gene that this Transcript is associated with
      */
     Gene getGene(Transcript transcript) {
-        return (Gene) featureRelationshipService.getParentForFeature(transcript, Gene.ontologyId, Pseudogene.ontologyId)
+        return (Gene) featureRelationshipService.getParentForFeature(transcript, Gene.ontologyId, Pseudogene.ontologyId,PseudogenicRegion.ontologyId,ProcessedPseudogene.ontologyId)
     }
 
     Pseudogene getPseudogene(Transcript transcript) {
-        return (Pseudogene) featureRelationshipService.getParentForFeature(transcript, Pseudogene.ontologyId)
+        return (Pseudogene) featureRelationshipService.getParentForFeature(transcript, Pseudogene.ontologyId, PseudogenicRegion.ontologyId,ProcessedPseudogene.ontologyId)
     }
 
     boolean isProteinCoding(Transcript transcript) {
@@ -480,6 +485,10 @@ class TranscriptService {
         if (gene1 && gene2) {
             if (gene1 != gene2) {
                 log.debug "Gene1 != Gene2; merging genes together"
+                if(configWrapperService.addMergedComment) {
+                    Comment geneMergeComment = new Comment(value: "Merged from ${gene2.name} / ${gene2.uniqueName} ", feature: gene1).save()
+                    featurePropertyService.addComment(gene1, geneMergeComment)
+                }
                 List<Transcript> gene2Transcripts = getTranscripts(gene2)
                 if (gene2Transcripts) {
                     gene2Transcripts.retainAll(featureService.getOverlappingTranscripts(transcript1))
@@ -502,6 +511,10 @@ class TranscriptService {
 
         // Delete the empty transcript from the gene, if gene not already deleted
         if (!flag) {
+            if(configWrapperService.addMergedComment){
+                Comment transcriptMergeComment = new Comment(value: "Merged from ${transcript2.name} / ${transcript2.uniqueName} ", feature: transcript1).save()
+                featurePropertyService.addComment(transcript1,transcriptMergeComment)
+            }
             featureService.mergeIsoformBoundaries(transcript1,transcript2)
             def childFeatures = featureRelationshipService.getChildren(transcript2)
             featureRelationshipService.deleteChildrenForTypes(transcript2)

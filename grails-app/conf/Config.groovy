@@ -35,7 +35,6 @@ grails.mime.types = [ // the first one is the default format
                       rtf          : 'application/rtf',
                       excel        : 'application/vnd.ms-excel',
                       ods          : 'application/vnd.oasis.opendocument.spreadsheet',
-                      all          : '*/*',
                       form         : 'application/x-www-form-urlencoded',
                       html         : ['text/html', 'application/xhtml+xml'],
                       js           : 'text/javascript',
@@ -180,9 +179,12 @@ log4j.main = {
     //debug 'grails.app.controllers.org.bbop.apollo'
     //debug 'grails.app.controllers.org.bbop.apollo.JbrowseController'
     //debug 'grails.app.services.org.bbop.apollo.FeatureService'
-    info 'grails.app.controllers.org.bbop.apollo.GroupController'
-    info 'grails.app.controllers.org.bbop.apollo.UserController'
-    //info 'grails.app.services'
+//  debug 'grails.app.services.org.bbop.apollo.SecurityFilters'
+//  debug 'grails.app.controllers'
+//  info 'grails.app.controllers.org.bbop.apollo.GroupController'
+//    info 'grails.app.controllers.org.bbop.apollo.UserController'
+//  debug 'grails.app.controllers.org.bbop.apollo.AvailableStatusController'
+  //info 'grails.app.services'
     //debug 'grails.app.jobs'
     //debug 'grails.app.taglib'
     //debug 'grails.app.controllers'
@@ -197,6 +199,14 @@ grails.gorm.failOnError = true
 grails.tomcat.nio = true
 grails.tomcat.scan.enabled = true
 
+// start CORS
+cors.url.pattern = '*'
+cors.enable.logging = true
+cors.enabled = true
+cors.headers = ['Access-Control-Allow-Origin': '*']
+// end CORS
+
+
 // default apollo settings
 apollo {
     default_minimum_intron_size = 1
@@ -204,6 +214,8 @@ apollo {
     overlapper_class = "org.bbop.apollo.sequence.OrfOverlapper"
     track_name_comparator = "/config/track_name_comparator.js"
     use_cds_for_new_transcripts = false
+    count_annotations = true
+    add_merged_comment = true
     transcript_overlapper = "CDS"
     feature_has_dbxrefs = true
     feature_has_attributes = true
@@ -216,6 +228,7 @@ apollo {
     is_partial_translation_allowed = false // unused so far
     export_subfeature_attrs = false
     store_orig_id = true // sets the orig_id to the original evidence id when first created
+    calculate_non_canonical_splice_sites = true
 
     // used for uploading
 //    common_data_directory = "/opt/apollo"
@@ -340,13 +353,14 @@ apollo {
             ['label': "Canned Comments", 'link': "/cannedComment/",'globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
             , ['label': "Canned Key", 'link': "/cannedKey/",'globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
             , ['label': "Canned Values", 'link': "/cannedValue/",'globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
-            , ['label': "Suggested Name", 'link': "/suggestedName/",'globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
-            , ['label': "Feature Types", 'link': "/featureType/",'globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
             , ['label': "Statuses", 'link': "/availableStatus/",'globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
+            , ['label': "Feature Types", 'link': "/featureType/",'globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
+            , ['label': "Suggested Feature Names", 'link': "/suggestedName/",'globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
+            , ['label': "Gene Product Names", 'link': "/geneProductName/",'globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
             , ['label': "Proxies", 'link': "/proxy/",'globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
             , ['label': "Report::Organisms", 'link': "/organism/report/", 'type': "report"]
             , ['label': "Report::Sequences", 'link': "/sequence/report/", 'type': "report"]
-            , ['label': "Report::Annotator", 'link': "/annotator/report/", 'type':'report','globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
+            , ['label': "Report::Users", 'link': "/annotator/report/", 'type':'report','globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
             , ['label': "Report::Instructor", 'link': "/annotator/instructorReport/", 'type': "report"]
             , ['label': "Report::Changes", 'link': "/featureEvent/report/", 'type': "report"]
             , ['label': "System Info", 'link': "/home/systemInfo/", 'type': "report",'globalRank':org.bbop.apollo.gwt.shared.GlobalPermissionEnum.ADMIN]
@@ -358,6 +372,8 @@ apollo {
     extraTabs = [
 //            ['title': 'extra1', 'url': 'http://localhost:8080/apollo/annotator/report/'],
 //            ['title': 'extra2', 'content': '<b>Some content</b><a href="http://google.com" target="_blank">Google</a>']
+//            ['title': 'GGA', 'url': 'https://gitter.im/galaxy-genome-annotation/Lobby/~embed']
+//            ['title': 'JBrowse', 'url': 'https://gitter.im/GMOD/jbrowse/~embed']
     ]
 
 
@@ -376,19 +392,13 @@ apollo {
     // comment out if you don't want this to be reported
     google_analytics = ["UA-62921593-1"]
 
-    phone {
-        phoneHome = true
-        url = "https://s3.amazonaws.com/"
-        bucketPrefix = "apollo-usage-"
-        fileName = "ping.json"
-    }
-
     native_track_selector_default_on = false
 }
 
 
 grails.plugin.databasemigration.updateOnStart = true
 grails.plugin.databasemigration.updateOnStartFileNames = ['changelog.groovy']
+grails.plugin.springwebsocket.useCustomConfig = true
 
 // from: http://grails.org/plugin/audit-logging
 auditLog {
@@ -403,7 +413,7 @@ auditLog {
 jbrowse {
     git {
         url = "https://github.com/gmod/jbrowse"
-        branch = "1.16.6-release"
+        branch = "1.16.11-release"
 //		branch = "dev"
 //        tag = "15dfd2309f2d508d8bed782d0f68b38dd9927bb4"
         alwaysPull = true

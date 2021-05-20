@@ -134,7 +134,6 @@ define([
 
                 var track = this;
 
-
                 this.gview.browser.subscribe("/jbrowse/v1/n/navigate", dojo.hitch(this, function (currRegion) {
                     if (currRegion.ref != this.refSeq.name) {
 
@@ -160,7 +159,7 @@ define([
                 var utrClass;
                 var parentType = subfeature.parent().afeature.parent_type;
                 if (!this.isProteinCoding(subfeature.parent())) {
-                    var clsName = parentType && parentType.name == "pseudogene" ? "pseudogene" : subfeature.parent().get("type");
+                    var clsName = parentType &&  ["pseudogene","pseudogenic_region","processed_pseudogene"].indexOf(parentType.name)>=0 ? parentType.name : subfeature.parent().get("type");
                     var cfg = this.config.style.alternateClasses[clsName];
                     utrClass = cfg.className;
                 }
@@ -227,7 +226,7 @@ define([
                         var responseFeatures = response.features;
                         if (!responseFeatures) {
                             alert("Error: " + JSON.stringify(response));
-                            console.log(response);
+                            console.error(response);
                             return;
                         }
 
@@ -240,7 +239,7 @@ define([
                         standby.hide();
 
                     }, function (response, ioArgs) {
-                        console.log("Annotation server error--maybe you forgot to login to the server?");
+                        console.error("Annotation server error--maybe you forgot to login to the server?");
                         track.handleError({responseText: response.response.text});
                         return response;
                     });
@@ -374,11 +373,11 @@ define([
                     }
                 };
                 browser.subscribe('/jbrowse/v1/c/tracks/show', function (labels) {
-                    console.log("show update");
+                    console.debug("show update");
                     handleTrackVisibility({command: "list", labels: labels});
                 });
                 browser.subscribe('/jbrowse/v1/c/tracks/hide', function () {
-                    console.log("hide update");
+                    console.debug("hide update");
                     handleTrackVisibility({command: "list"});
                 });
 
@@ -407,7 +406,7 @@ define([
                         handleTrackVisibility(event.data);
                     }
                     else{
-                        console.log("Unknown command: "+event.data.description);
+                        console.error("Unknown command: "+event.data.description);
                     }
                 }
                 window.addEventListener("message",handleMessage,true);
@@ -420,6 +419,7 @@ define([
                     var user = JSON.parse(apolloMainPanel.getCurrentUser());
                     client.subscribe("/topic/AnnotationNotification/" + organism.id + "/" + sequence.id, dojo.hitch(track, 'annotationNotification'));
                     client.subscribe("/topic/AnnotationNotification/user/" + user.email, dojo.hitch(track, 'annotationNotification'));
+                    localStorage.setItem('organism-id', organism.id);
                 });
                 console.log('connection established');
             },
@@ -536,18 +536,18 @@ define([
                             track.selectionAdded(selection,track.selectionManager);
                         }
 
-                        if (this.runningApollo()) this.getApollo().handleFeatureDeleted(JSON.stringify(changeData.features));
+                        if (this.runningApollo()) this.getApollo().handleFeatureUpdated(JSON.stringify(changeData.features));
 
 
 
                     }
                     else {
-                        console.log('unknown command: ', changeData.operation);
+                        console.error('unknown command: ', changeData.operation);
                     }
 
                     track.changed();
                 } catch (e) {
-                    console.log(e);
+                    console.error(e);
                 }
             },
 
@@ -674,7 +674,7 @@ define([
                         })
                         .click(function (event) {
                             if (event.altKey) {
-                                track.getAnnotationInfoEditor();
+                                track.getNewAnnotationInfoEditor();
                             }
                             if (event.metaKey) {
                                 track.getSequence();
@@ -691,8 +691,9 @@ define([
                     new Tooltip({
                         connectId: featDiv,
                         label: label,
-                        position: ["after","before","below","above"],
-                        showDelay: 0
+                        // position: ["after","before","below","above"],
+                        position: ["below","above"],
+                        showDelay:2000
                     });
                 }
 
@@ -840,7 +841,20 @@ define([
                                 var subfeat = ui.originalElement[0].subfeature;
                                 var fmin = subfeat.get('start') + leftDeltaBases;
                                 var fmax = subfeat.get('end') + rightDeltaBases;
-                                var operation = subfeat.get("type") == "exon" ? "set_exon_boundaries" : "set_boundaries";
+                                var subfeatType = subfeat.get("type");
+                                var operation ;
+                                switch(subfeatType){
+                                    case 'exon':
+                                        operation = 'set_exon_boundaries';
+                                        break;
+                                    case 'Shine_Dalgarno_sequence':
+                                        operation = 'set_shine_dalgarno_boundaries';
+                                        break;
+                                    default:
+                                        operation = 'set_boundaries'
+                                }
+
+                                // var operation = subfeat.get("type") == "exon" ? "set_exon_boundaries" : "set_boundaries";
                                 var postData = {
                                     "track": track.getUniqueTrackName(),
                                     "features": [
@@ -1033,6 +1047,7 @@ define([
                         else if (target_track.track_under_mouse_drag) {
                             if (target_track.verbose_drop) {
                                 console.log("draggable dropped on AnnotTrack");
+                                console.log('dropped on target track',target_track,dropped_feats);
                             }
                             target_track.createAnnotations(dropped_feats,false);
                         }
@@ -1066,7 +1081,7 @@ define([
                     }
                     else if (type == "INDEL") {
                         // feature is an indel and is not supported
-                        console.log("unsupported variant type: INDEL");
+                        console.error("unsupported variant type: INDEL");
                         continue;
                     }
 
@@ -1170,15 +1185,18 @@ define([
 
                     // TODO: pull from the server at some point
                     // TODO: this list is duplicated
-                    var recognizedBioType = [
-                        'transcript' ,'tRNA','snRNA','snoRNA','ncRNA','rRNA','mRNA','miRNA','repeat_region','transposable_element','terminator'
-                    ];
-                    var strandedOneLevelTypes = ['terminator'];
+                    // initiall the ncRNA
+                    var recognizedBioType = ['transcript' ,'tRNA','snRNA','snoRNA', 'ncRNA','rRNA','mRNA','miRNA', 'guide_RNA', 'RNase_P_RNA', 'telomerase_RNA', 'SRP_RNA', 'lnc_RNA', 'RNase_MRP_RNA', 'scRNA', 'piRNA', 'tmRNA', 'enzymatic_RNA'];
+                    recognizedBioType.push('repeat_region')
+                    recognizedBioType.push('transposable_element')
+                    recognizedBioType.push('terminator')
+                    recognizedBioType.push('Shine_Dalgarno_sequence')
+                    var strandedOneLevelTypes = ['terminator','Shine_Dalgarno_sequence'];
 
                     if(force_type) {
                         biotype = featureToAdd.get('type');
                         if(!recognizedBioType[biotype]){
-                            console.log('biotype not found ['+biotype + '] converting to mRNA');
+                            console.debug('biotype not found ['+biotype + '] converting to mRNA');
                             biotype = 'mRNA';
                         }
                     }
@@ -1204,7 +1222,7 @@ define([
                         target_track.createGenericOneLevelAnnotations([featureToAdd], biotype , strandedOneLevelTypes.indexOf(biotype)<0);
                     }
 
-                    var postData = {
+                  var postData = {
                         "track": target_track.getUniqueTrackName(),
                         "features": featuresToAdd,
                         "operation": "add_transcript"
@@ -1283,7 +1301,6 @@ define([
                                             features: featuresToAdd,
                                             operation: "add_variant"
                                         };
-                                        console.log("PostData: ", postData);
                                         target_track.executeUpdateOperation(JSON.stringify(postData));
                                     }
                                 }
@@ -1769,11 +1786,6 @@ define([
                 var track = this;
                 var trackName = this.getUniqueTrackName();
                 var selected = this.selectionManager.getSelection();
-                console.log('selected',selected);
-                // var feature = selected[0].feature ;
-                // var location = feature.afeature.location ;
-                // var variant_type = feature.data.type;
-                console.log('feature to remove variant from',selected);
                 var featureUniqueName;
                 if (selected[0].feature.parent()) {
                     //selected is an exon, get its parent
@@ -1800,7 +1812,6 @@ define([
                 var track = this;
                 var trackName = this.getUniqueTrackName();
                 var selected = this.selectionManager.getSelection();
-                console.log('selected',selected)
                 var feature = selected[0].feature ;
                 // var location = feature.afeature.location ;
                 var variant_type = feature.data.type;
@@ -2052,11 +2063,8 @@ define([
                 for (var i in records) {
                     var record = records[i];
                     var selfeat = record.feature;
-                    // console.log('this feagture',selfeat)
                     var seltrack = record.track;
                     var topfeat = AnnotTrack.getTopLevelAnnotation(selfeat);
-                    // console.log('top feature',topfeat)
-                    // var uniqueName = topfeat.id();
                     var uniqueName = topfeat.id();
                     // just checking to ensure that all features in selection are from
                     // this track
@@ -2122,7 +2130,13 @@ define([
                 this.setLongestORFForSelectedFeatures(selected);
             },
 
-            setLongestORFForSelectedFeatures: function (selection) {
+            setOptimalORF: function () {
+                var selected = this.selectionManager.getSelection();
+                this.selectionManager.clearSelection();
+                this.setLongestORFForSelectedFeatures(selected,false);
+            },
+
+            setLongestORFForSelectedFeatures: function (selection,allowPartials = true) {
                 var track = this;
                 var features = '"features": [';
                 for (var i in selection) {
@@ -2132,19 +2146,16 @@ define([
                     // just checking to ensure that all features in selection are from
                     // this track
                     if (atrack === track) {
-                        var trackdiv = track.div;
-                        var trackName = track.getUniqueTrackName();
-
                         if (i > 0) {
                             features += ',';
                         }
-                        features += ' { "uniquename": "' + uniqueName + '" } ';
+                        features += ` { "uniquename": "${uniqueName}" } `;
                     }
                 }
                 features += ']';
                 var operation = "set_longest_orf";
                 var trackName = track.getUniqueTrackName();
-                var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
+                var postData = `{ "track": "${trackName}",  ${features} , "operation": "${operation}" , "allow_partials": ${allowPartials} }`;
                 track.executeUpdateOperation(postData);
             },
 
@@ -2352,13 +2363,30 @@ define([
                 track.executeUpdateOperation(postData);
             },
 
-            getAnnotationInfoEditor: function () {
+            getNewAnnotationInfoEditor: function () {
+                var topTypes = ['repeat_region','transposable_element','gene','pseudogene','pseudogenic_region','processed_pseudogene', 'SNV', 'SNP', 'MNV', 'MNP', 'indel', 'insertion', 'deletion','terminator','Shine_Dalgarno_sequence'];
                 var selected = this.selectionManager.getSelection();
-                this.getAnnotationInfoEditorForSelectedFeatures(selected);
+                var selectedFeature = selected[0].feature;
+                var selectedFeatureDetails = selectedFeature.afeature;
+                while(selectedFeature  ){
+                    if(topTypes.indexOf(selectedFeatureDetails.type.name)>=0){
+                        this.getApollo().viewInAnnotationPanel(selectedFeatureDetails.uniquename,null);
+                        return ;
+                    }
+                    else
+                    if(topTypes.indexOf(selectedFeatureDetails.parent_type.name)>=0){
+                        this.getApollo().viewInAnnotationPanel(selectedFeatureDetails.parent_id,selectedFeatureDetails.uniquename);
+                        return ;
+                    }
+                    selectedFeature = selectedFeature._parent ;
+                    selectedFeatureDetails = selectedFeature.afeature ;
+                }
+                alert('Unable to focus on object');
             },
 
             changeAnnotationType: function(type) {
                 var selected = this.selectionManager.getSelection();
+                console.log('changing annotation type',type,selected[0])
                 if (selected[0].feature.afeature.type.name === type) {
                     this.alertAnnotationType(selected[0], type);
                 }
@@ -2391,87 +2419,6 @@ define([
                     confirmLabel: 'OK',
                     denyLabel: 'Cancel'
                 }).show();
-            },
-
-            getAnnotationInfoEditorForSelectedFeatures: function (records) {
-                var track = this;
-                var record = records[0];
-                if(!record){
-                    console.log('No record selected');
-                }
-                var annot = AnnotTrack.getTopLevelAnnotation(record.feature);
-                var seltrack = record.track;
-                // just checking to ensure that all features in selection are from this
-                // track
-                if (seltrack !== track) {
-                    return;
-                }
-                track.getAnnotationInfoEditorConfigs(track.getUniqueTrackName());
-                var content = dojo.create("div", {'class': "annotation_info_editor_container"});
-                if (annot.afeature.parent_id) {
-                    var selectorDiv = dojo.create("div", {'class': "annotation_info_editor_selector"}, content);
-                    //var selectorLabel = dojo.create("label", {
-                        //innerHTML: "Select " + annot.get("type"),
-                        //'class': "annotation_info_editor_selector_label"
-                    //}, selectorDiv);
-                    var data = [];
-                    var feats = track.topLevelParents[annot.afeature.parent_id];
-                    for (var i in feats) {
-                        var feat = feats[i];
-                        data.push({id: feat.uniquename, label: feat.name});
-                    }
-                    var store = new Memory({
-                        data: data
-                    });
-                    var os = new ObjectStore({objectStore: store});
-                    var selector = new Select({store: os});
-                    //selector.placeAt(selectorDiv);
-                    //selector.attr("value", annot.afeature.uniquename);
-                    //selector.attr("style", "width: 50%;");
-                    var first = true;
-                    dojo.connect(selector, "onChange", function (id) {
-                        if (!first) {
-                            dojo.destroy("child_annotation_info_editor");
-                            annotContent = track.createAnnotationInfoEditorPanelForFeature(id, track.getUniqueTrackName(), selector, true);
-                            dojo.attr(annotContent, "class", "annotation_info_editor");
-                            dojo.attr(annotContent, "id", "child_annotation_info_editor");
-                            dojo.place(annotContent, content);
-                        }
-                        first = false;
-                    });
-                }
-                var numItems = 0;
-                // if annotation has parent, get comments for parent
-                if (annot.afeature.parent_id) {
-                    var parentContent = this.createAnnotationInfoEditorPanelForFeature(annot.afeature.parent_id, annot.id(), track.getUniqueTrackName());
-                    dojo.attr(parentContent, "class", "parent_annotation_info_editor");
-                    dojo.place(parentContent, content);
-                    ++numItems;
-                } else {
-                    var annotContent = this.createAnnotationInfoEditorPanelForFeature(annot.id(), null, track.getUniqueTrackName(), selector, false);
-                    dojo.attr(annotContent, "class", "annotation_info_editor");
-                    dojo.attr(annotContent, "id", "child_annotation_info_editor");
-                    dojo.place(annotContent, content);
-                    ++numItems;
-                }
-                var annotContent;
-                if (JSONUtils.variantTypes.indexOf(annot.afeature.type.name.toUpperCase()) != -1) {
-                    // feature is a variant
-                    annotContent = this.createAnnotationInfoEditorPanelForVariant(annot.id(), track.getUniqueTrackName(), selector, false);
-                }
-                else {
-                    annotContent = this.createAnnotationInfoEditorPanelForFeature(annot.id(), track.getUniqueTrackName(), selector, false);
-                }
-                dojo.attr(annotContent, "class", "annotation_info_editor");
-                dojo.attr(annotContent, "id", "child_annotation_info_editor");
-                dojo.place(annotContent, content);
-                ++numItems;
-                dojo.attr(content, "style", "width:" + (numItems == 1 ? "28" : "58") + "em;");
-                track.openDialog("Information Editor", content);
-                AnnotTrack.popupDialog.resize();
-                AnnotTrack.popupDialog._position();
-
-
             },
 
             getAnnotationInfoEditorConfigs: function (trackName) {
@@ -2869,7 +2816,6 @@ define([
                         timeout: 5000 * 1000, // Time in milliseconds
                         load: function (response, ioArgs) {
                             var feature = response.features[0];
-                            console.log(track.annotationInfoEditorConfigs);
                             var config = track.annotationInfoEditorConfigs[feature.type.cv.name + ":" + feature.type.name] || track.annotationInfoEditorConfigs["default"];
                             initType(feature);
                             initName(feature);
@@ -3065,8 +3011,6 @@ define([
 
                 // initialize alternate alleles
                 var initAltAlleles = function (feature) {
-                    console.log("@initAltAlleles");
-                    console.log("feature: ", feature);
                     var oldAltBases;
                     //var oldAltAlleleFrequency;
                     //var oldProvenance;
@@ -3140,92 +3084,6 @@ define([
                     if (reload) {
                         initTable(altAlleleTable.domNode, altAllelesTable, altAlleleTable, timeout);
                     }
-
-//                    var dirty = false;
-//                    dojo.connect(altAlleleTable, "onStartEdit", function (inCell, inRowIndex) {
-//                        console.log("onStartEdit");
-//                        if (!dirty) {
-//                            oldAltBases = altAlleleTable.store.getValue(altAlleleTable.getItem(inRowIndex), "bases");
-//                            //oldAltAlleleFrequency = altAlleleTable.store.getValue(altAlleleTable.getItem(inRowIndex), "allele_frequency");
-//                            //oldProvenance = altAlleleTable.store.getValue(altAlleleTable.getItem(inRowIndex), "provenance");
-//                            dirty = true;
-//                        }
-//                    });
-//
-//                    dojo.connect(altAlleleTable, "onCancelEdit", function(inRowIndex) {
-//                        console.log("onCancelEdit");
-//                        altAlleleTable.store.setValue(altAlleleTable.getItem(inRowIndex), "bases", oldAltBases);
-//                        //altAlleleTable.store.setValue(altAlleleTable.getItem(inRowIndex), "allele_frequency", oldAltAlleleFrequency);
-//                        //altAlleleTable.store.setValue(altAlleleTable.getItem(inRowIndex), "provenance", oldProvenance);
-//                        dirty = false;
-//                    });
-
-//                    dojo.connect(altAlleleTable, "onApplyEdit", function(inRowIndex) {
-//                        var newAltBases = altAlleleTable.store.getValue(altAlleleTable.getItem(inRowIndex), "bases").toUpperCase();
-//                        var newAltAlleleFrequency = altAlleleTable.store.getValue(altAlleleTable.getItem(inRowIndex), "allele_frequency");
-//                        var newProvenance = altAlleleTable.store.getValue(altAlleleTable.getItem(inRowIndex), "provenance");
-//                       var altFreq = parseFloat(newAltAlleleFrequency);
-//                        if (altFreq < 0 || altFreq > 1.0) {
-//                            // sanity check for frequency value
-//                            new ConfirmDialog({
-//                                title: 'Improper value for AF field',
-//                                message: "The value for AF field should be within the range of 0.0 - 1.0",
-//                                confirmLabel: 'OK',
-//                                denyLabel: 'Cancel'
-//                            }).show(function(confirmed) {});
-//                            altAlleleTable.store.setValue(altAlleleTable.getItem(inRowIndex), "bases", newAltBases);
-//                            altAlleleTable.store.setValue(altAlleleTable.getItem(inRowIndex), "allele_frequency", "");
-//                            altAlleleTable.store.setValue(altAlleleTable.getItem(inRowIndex), "provenance", newProvenance);
-//                        }
-//                        else {
-//                            if (newProvenance === undefined || newProvenance == "undefined" || newProvenance == "") {
-//                                console.log("provenance not provided");
-//                                // frequency must always be associated with a provenance
-//                                new ConfirmDialog({
-//                                    title: 'No provenance provided',
-//                                    message: 'No provenance provided to support the entered AF value',
-//                                    confirmLabel: 'OK',
-//                                    denyLabel: 'Cancel'
-//                                }).show(function(confirmed) {});
-//                                altAlleleTable.store.setValue(altAlleleTable.getItem(inRowIndex), "bases", newAltBases);
-//                                altAlleleTable.store.setValue(altAlleleTable.getItem(inRowIndex), "allele_frequency", newAltAlleleFrequency);
-//                                altAlleleTable.store.setValue(altAlleleTable.getItem(inRowIndex), "provenance", "");
-//                            }
-//                            else {
-//                                if (!newAltBases || !newAltAlleleFrequency || !newProvenance) {
-//                                    // no changes
-//                                }
-//                                else if (!oldAltBases) {
-//                                    addAltAlleles(newAltBases, newAltAlleleFrequency, newProvenance);
-//                                }
-//                                else {
-//                                    if (newAltBases != oldAltBases || newAltAlleleFrequency != oldAltAlleleFrequency || newProvenance != oldProvenance) {
-//                                        updateAltAlleles(oldAltBases, oldAltAlleleFrequency, oldProvenance, newAltBases, newAltAlleleFrequency, newProvenance);
-//                                    }
-//                                }
-//                                dirty = false;
-//                            }
-//                        }
-//                    });
-
-//                    dojo.connect(addAltAlleleButton, "onclick", function() {
-//                        altAlleleTable.store.newItem({bases: "", allele_frequency: "", provenance: ""});
-//                        altAlleleTable.scrollToRow(altAlleleTable.rowCount);
-//                    });
-//
-//                    dojo.connect(deleteAltAlleleButton, "onclick", function() {
-//                        var toBeDeleted = new Array();
-//                        var selected = altAlleleTable.selection.getSelected();
-//                        for (var i = 0; i < selected.length; ++i) {
-//                            var item = selected[i];
-//                            var altBases = altAlleleTable.store.getValue(item, "bases");
-//                            //var altAlleleFrequency = altAlleleTable.store.getValue(item, "allele_frequency");
-//                            //var provenance = altAlleleTable.store.getValue(item, "provenance");
-//                            toBeDeleted.push({bases: altBases, allele_frequency: altAlleleFrequency, provenance: provenance});
-//                        }
-//                        altAlleleTable.removeSelectedRows();
-//                        deleteAltAlleles(toBeDeleted);
-//                    });
                };
 
                 // initialize Dbxref
@@ -3345,129 +3203,6 @@ define([
                     }
                 };
 
-                // initialize Attributes
-                //var initAttributes = function (feature, config) {
-                //    if (config.hasAttributes) {
-                //        cannedKeys = feature.canned_keys;
-                //        cannedValues = feature.canned_values;
-                //        var oldTag;
-                //        var oldValue;
-                //        var attributes = new dojoItemFileWriteStore({
-                //            data: {
-                //                items: []
-                //            }
-                //        });
-                //        for (var i = 0; i < feature.non_reserved_properties.length; ++i) {
-                //            var attribute = feature.non_reserved_properties[i];
-                //            attributes.newItem({tag: attribute.tag, value: attribute.value});
-                //        }
-                //
-                //
-                //        var attributeTableLayout = [{
-                //            cells: [
-                //                {
-                //                    name: 'Tag',
-                //                    field: 'tag',
-                //                    width: '40%',
-                //                    type: dojox.grid.cells.ComboBox,
-                //                    //type: dojox.grid.cells.Select,
-                //                    options: cannedKeys,
-                //                    formatter: function (tag) {
-                //                        if (!tag) {
-                //                            return "Enter new tag";
-                //                        }
-                //                        return tag;
-                //                    },
-                //                    editable: hasWritePermission
-                //                },
-                //                {
-                //                    name: 'Value',
-                //                    field: 'value',
-                //                    width: '60%',
-                //                    type: dojox.grid.cells.ComboBox,
-                //                    //type: dojox.grid.cells.Select,
-                //                    options: cannedValues,
-                //                    formatter: function (value) {
-                //                        if (!value) {
-                //                            return "Enter new value";
-                //                        }
-                //                        return value;
-                //                    },
-                //                    editable: hasWritePermission
-                //                }
-                //            ]
-                //        }];
-                //
-                //        var attributeTable = new dojoxDataGrid({
-                //            singleClickEdit: true,
-                //            store: attributes,
-                //            updateDelay: 0,
-                //            structure: attributeTableLayout
-                //        });
-                //
-                //        var handle = dojo.connect(AnnotTrack.popupDialog, "onFocus", function () {
-                //            initTable(attributeTable.domNode, attributesTable, attributeTable);
-                //            dojo.disconnect(handle);
-                //        });
-                //        if (reload) {
-                //            initTable(attributeTable.domNode, attributesTable, attributeTable, timeout);
-                //        }
-                //
-                //        var dirty = false;
-                //
-                //        dojo.connect(attributeTable, "onStartEdit", function (inCell, inRowIndex) {
-                //            if (!dirty) {
-                //                oldTag = attributeTable.store.getValue(attributeTable.getItem(inRowIndex), "tag");
-                //                oldValue = attributeTable.store.getValue(attributeTable.getItem(inRowIndex), "value");
-                //                dirty = true;
-                //            }
-                //        });
-                //
-                //        dojo.connect(attributeTable, "onCancelEdit", function (inRowIndex) {
-                //            attributeTable.store.setValue(attributeTable.getItem(inRowIndex), "tag", oldTag);
-                //            attributeTable.store.setValue(attributeTable.getItem(inRowIndex), "value", oldValue);
-                //            dirty = false;
-                //        });
-                //
-                //        dojo.connect(attributeTable, "onApplyEdit", function (inRowIndex) {
-                //            var newTag = attributeTable.store.getValue(attributeTable.getItem(inRowIndex), "tag");
-                //            var newValue = attributeTable.store.getValue(attributeTable.getItem(inRowIndex), "value");
-                //            if (!newTag || !newValue) {
-                //            }
-                //            else if (!oldTag || !oldValue) {
-                //                addAttribute(newTag, newValue);
-                //            }
-                //            else {
-                //                if (newTag != oldTag || newValue != oldValue) {
-                //                    updateAttribute(oldTag, oldValue, newTag, newValue);
-                //                }
-                //            }
-                //            dirty = false;
-                //        });
-                //
-                //        dojo.connect(addAttributeButton, "onclick", function () {
-                //            attributeTable.store.newItem({tag: "", value: ""});
-                //            attributeTable.scrollToRow(attributeTable.rowCount);
-                //        });
-                //
-                //        dojo.connect(deleteAttributeButton, "onclick", function () {
-                //            var toBeDeleted = new Array();
-                //            var selected = attributeTable.selection.getSelected();
-                //            for (var i = 0; i < selected.length; ++i) {
-                //                var item = selected[i];
-                //                var tag = attributeTable.store.getValue(item, "tag");
-                //                var value = attributeTable.store.getValue(item, "value");
-                //                toBeDeleted.push({tag: tag, value: value});
-                //            }
-                //            attributeTable.removeSelectedRows();
-                //            deleteAttributes(toBeDeleted);
-                //        });
-                //    }
-                //    else {
-                //        dojo.style(attributesDiv, "display", "none");
-                //    }
-                //
-                //};
 
                 // initialize Allele Info
                 var initAlleleInfo = function (feature) {
@@ -3795,7 +3530,6 @@ define([
                     dojo.connect(addPhenotypeOntologyButton, "onclick", function () {
                         phenotypeOntologyIdTable.store.newItem({phenotype_ontology_id: ""});
                         phenotypeOntologyIdTable.scrollToRow(phenotypeOntologyIdTable.rowCount);
-                        console.log("add button click");
                     });
 
                     dojo.connect(deletePhenotypeOntologyButton, "onclick", function () {
@@ -3807,7 +3541,6 @@ define([
                             var parts = phenotypeOntologyId.split(":");
                             toBeDeleted.push({db: parts[0], accession: parts[1]});
                         }
-                        console.log("To Be Del: ", toBeDeleted);
                         phenotypeOntologyIdTable.removeSelectedRows();
                         deletePhenotypeOntologyIds(toBeDeleted);
                     });
@@ -4047,7 +3780,6 @@ define([
                 };
 
                 var addAltAlleles = function(altBases, alleleFrequency, provenance) {
-                    console.log("@addAltAlleles: " + altBases);
                     var features = [{ uniquename: uniqueName }];
                     var alternateAllele = {bases: altBases};
                     if (alleleFrequency) alternateAllele.allele_frequency = alleleFrequency;
@@ -4061,7 +3793,6 @@ define([
                 };
 
                 var updateAltAlleles = function(oldBases, oldAlleleFrequency, oldProvenance, newBases, newAlleleFrequency, newProvenance) {
-                    console.log("@updateAltAlleles: " + newBases);
                     var feature = { uniquename: uniqueName };
                     var oldAlternateAllele = {};
                     oldAlternateAllele.bases = oldBases;
@@ -4076,13 +3807,11 @@ define([
 
                     var operation = "update_alternate_alleles";
                     var postData = { track: trackName, features: [feature], operation: operation };
-                    console.log("PostData: ", postData);
                     track.executeUpdateOperation(JSON.stringify(postData));
                     updateTimeLastUpdated();
                 };
 
                 var deleteAltAlleles = function(altAllelesToBeDeleted) {
-                    console.log("@deleteAltAlleles");
                     var alternateAlleles = [];
                     for (var i = 0; i < altAllelesToBeDeleted.length; ++i) {
                         var alternateAllele = {};
@@ -4095,7 +3824,6 @@ define([
                     var features = [{ uniquename: uniqueName, alternate_alleles: alternateAlleles }];
                     var operation = "delete_alternate_alleles";
                     var postData = {track: trackName, features: features, operation: operation};
-                    console.log("PostData: ", postData);
                     track.executeUpdateOperation(JSON.stringify(postData));
                     updateTimeLastUpdated();
                 };
@@ -4134,42 +3862,8 @@ define([
                     updateTimeLastUpdated();
                 };
 
-                //var addAttribute = function (tag, value) {
-                //    tag = escapeString(tag);
-                //    value = escapeString(value);
-                //    var features = '"features": [ { "uniquename": "' + uniqueName + '", "non_reserved_properties": [ { "tag": "' + tag + '", "value": "' + value + '" } ] } ]';
-                //    var operation = "add_non_reserved_properties";
-                //    var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
-                //    track.executeUpdateOperation(postData);
-                //    updateTimeLastUpdated();
-                //};
-                //
-                //var deleteAttributes = function (attributes) {
-                //    for (var i = 0; i < attributes.length; ++i) {
-                //        attributes[i].tag = escapeString(attributes[i].tag);
-                //        attributes[i].value = escapeString(attributes[i].value);
-                //    }
-                //    var features = '"features": [ { "uniquename": "' + uniqueName + '", "non_reserved_properties": ' + JSON.stringify(attributes) + ' } ]';
-                //    var operation = "delete_non_reserved_properties";
-                //    var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
-                //    track.executeUpdateOperation(postData);
-                //    updateTimeLastUpdated();
-                //};
-                //
-                //var updateAttribute = function (oldTag, oldValue, newTag, newValue) {
-                //    oldTag = escapeString(oldTag);
-                //    oldValue = escapeString(oldValue);
-                //    newTag = escapeString(newTag);
-                //    newValue = escapeString(newValue);
-                //    var features = '"features": [ { "uniquename": "' + uniqueName + '", "old_non_reserved_properties": [ { "tag": "' + oldTag + '", "value": "' + oldValue + '" } ], "new_non_reserved_properties": [ { "tag": "' + newTag + '", "value": "' + newValue + '" } ] } ]';
-                //    var operation = "update_non_reserved_properties";
-                //    var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
-                //    track.executeUpdateOperation(postData);
-                //    updateTimeLastUpdated();
-                //};
 
                 var addAlleleInfo = function(allele, tag, value) {
-                    console.log("addAlleleInfo: ", allele, tag, value);
                     allele = escapeString(allele);
                     tag = escapeString(tag);
                     value = escapeString(value);
@@ -4422,30 +4116,6 @@ define([
                     }
                 };
 
-                //var deleteGoIds = function (goIds) {
-                //    var features = '"features": [ { "uniquename": "' + uniqueName + '", "dbxrefs": ' + JSON.stringify(goIds) + ' } ]';
-                //    var operation = "delete_non_primary_dbxrefs";
-                //    var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
-                //    track.executeUpdateOperation(postData);
-                //    updateTimeLastUpdated();
-                //};
-                //
-                //var updateGoId = function (goIdTable, item, oldGoId, newGoId, valid) {
-                //    if (valid) {
-                //        var oldGoAccession = oldGoId.substr(goIdDb.length + 1);
-                //        var newGoAccession = newGoId.substr(goIdDb.length + 1);
-                //        var features = '"features": [ { "uniquename": "' + uniqueName + '", "old_dbxrefs": [ { "db": "' + goIdDb + '", "accession": "' + oldGoAccession + '" } ], "new_dbxrefs": [ { "db": "' + goIdDb + '", "accession": "' + newGoAccession + '" } ] } ]';
-                //        var operation = "update_non_primary_dbxrefs";
-                //        var postData = '{ "track": "' + trackName + '", ' + features + ', "operation": "' + operation + '" }';
-                //        track.executeUpdateOperation(postData);
-                //        updateTimeLastUpdated();
-                //    }
-                //    else {
-                //        alert("Invalid ID " + newGoId + " - Undoing update");
-                //        goIdTable.store.setValue(item, "go_id", oldGoId);
-                //        goIdTable.close();
-                //    }
-                //};
 
                 var addComment = function (comment) {
                     comment = escapeString(comment);
@@ -5262,45 +4932,6 @@ define([
                                     name: 'Gene Ontology ID',
                                     field: 'go_id', // '_item',
                                     width: '100%',
-                                    // type: declare(dojox.grid.cells._Widget, {
-                                    //     widgetClass: dijitTextBox,
-                                    //     createWidget: function (inNode, inDatum, inRowIndex) {
-                                    //         var widget = new this.widgetClass(this.getWidgetProps(inDatum), inNode);
-                                    //         var textBox = widget.domNode.childNodes[0].childNodes[0];
-                                    //         dojo.connect(textBox, "onkeydown", function (event) {
-                                    //             if (event.keyCode == dojo.keys.ENTER) {
-                                    //                 if (dirty) {
-                                    //                     dirty = false;
-                                    //                     valid = validateGoId(textBox.value) ? true : false;
-                                    //                 }
-                                    //             }
-                                    //         });
-                                    //         var original = 'http://golr.geneontology.org/';
-                                    //         //var original = 'http://golr.geneontology.org/solr/';
-                                    //         //var original = 'http://golr.berkeleybop.org/solr/';
-                                    //         var encoded_original = encodeURI(original);
-                                    //         encoded_original = encoded_original.replace(/:/g, "%3A");
-                                    //         encoded_original = encoded_original.replace(/\//g, "%2F");
-                                    //
-                                    //         //var gserv = context_path + "/proxy/request/http/golr.geneontology.org%2Fsolr%2Fselect/json/";
-                                    //         var gserv = context_path + "/proxy/request/" + encoded_original;
-                                    //         var gconf = new bbop.golr.conf(amigo.data.golr);
-                                    //         var args = {
-                                    //             label_template: '{{annotation_class_label}} [{{annotation_class}}]',
-                                    //             value_template: '{{annotation_class}}',
-                                    //             list_select_callback: function (doc) {
-                                    //                 dirty = false;
-                                    //                 valid = true;
-                                    //                 goIdTable.store.setValue(goIdTable.getItem(editingRow), "go_id", doc.annotation_class);
-                                    //             }
-                                    //         };
-                                    //         var auto = new bbop.widget.search_box(gserv, gconf, textBox, args);
-                                    //         auto.set_personality('bbop_term_ac');
-                                    //         auto.add_query_filter('document_category', 'ontology_class');
-                                    //         auto.add_query_filter('source', '(biological_process OR molecular_function OR cellular_component)');
-                                    //         return widget;
-                                    //     }
-                                    // }),
                                     formatter: function (goId, rowIndex, cell) {
                                         if (!goId) {
                                             return "Enter new Gene Ontology ID";
@@ -5333,13 +4964,10 @@ define([
                             dirty = true;
                         });
 
-                        // dojo.connect(goIdTable, "onApplyCellEdit", function(inValue, inRowIndex, inCellIndex) {
                         dojo.connect(goIdTable.store, "onSet", function (item, attribute, oldValue, newValue) {
                             if (dirty) {
                                 return;
                             }
-                            // var newGoId = goIdTable.store.getValue(goIdTable.getItem(inRowIndex),
-                            // "go_id");
                             var newGoId = newValue;
                             if (!newGoId) {
                             }
@@ -6181,7 +5809,7 @@ define([
                     // The ERROR function will be called in an error case.
                     error: function (response, ioArgs) {
                         track.handleError(response);
-                        console.log("Annotation server error--maybe you forgot to login to the server?");
+                        console.error("Annotation server error--maybe you forgot to login to the server?");
                         console.error("HTTP status code: ", ioArgs.xhr.status);
                         //
                         // dojo.byId("replace").innerHTML = 'Loading the resource
@@ -6238,8 +5866,8 @@ define([
                         // The ERROR function will be called in an error case.
                         error: function (response, ioArgs) {
                             track.handleError(response);
-                            console.log(response);
-                            console.log("Annotation server error--maybe you forgot to login to the server?");
+                            console.error(response);
+                            console.error("Annotation server error--maybe you forgot to login to the server?");
                             console.error("HTTP status code: ", ioArgs.xhr.status);
                             //
                             // dojo.byId("replace").innerHTML = 'Loading the
@@ -6393,15 +6021,21 @@ define([
                         timeout: 5000 * 1000, // Time in milliseconds
                         load: function (response, ioArgs) {
                             var textAreaContent = "";
-                            for (var i = 0; i < response.features.length; ++i) {
-                                var feature = response.features[i];
-                                var cvterm = feature.type;
-                                var residues = feature.residues;
-                                var loc = feature.location;
-                                textAreaContent += "&gt;" + feature.uniquename + " (" + cvterm.cv.name + ":" + cvterm.name + ") " + residues.length + " residues [" + track.refSeq.name + ":" + (loc.fmin + 1) + "-" + loc.fmax + " " + (loc.strand == -1 ? "-" : loc.strand == 1 ? "+" : "no") + " strand] [" + type + (flank > 0 ? " +/- " + flank + " bases" : "") + "]\n";
-                                var lineLength = 60;
-                                for (var j = 0; j < residues.length; j += lineLength) {
-                                    textAreaContent += residues.substr(j, lineLength) + "\n";
+                            if(response.error){
+                                textAreaContent = response.error ;
+                                // track.handleError(response)
+                            }
+                            else{
+                                for (var i = 0; i < response.features.length; ++i) {
+                                    var feature = response.features[i];
+                                    var cvterm = feature.type;
+                                    var residues = feature.residues;
+                                    var loc = feature.location;
+                                    textAreaContent += "&gt;" + feature.uniquename + " (" + cvterm.cv.name + ":" + cvterm.name + ") " + residues.length + " residues [" + track.refSeq.name + ":" + (loc.fmin + 1) + "-" + loc.fmax + " " + (loc.strand == -1 ? "-" : loc.strand == 1 ? "+" : "no") + " strand] [" + type + (flank > 0 ? " +/- " + flank + " bases" : "") + "]\n";
+                                    var lineLength = 60;
+                                    for (var j = 0; j < residues.length; j += lineLength) {
+                                        textAreaContent += residues.substr(j, lineLength) + "\n";
+                                    }
                                 }
                             }
                             dojo.attr(textArea, "innerHTML", textAreaContent);
@@ -6409,7 +6043,7 @@ define([
                         // The ERROR function will be called in an error case.
                         error: function (response, ioArgs) {
                             track.handleError(response);
-                            console.log("Annotation server error--maybe you forgot to login to the server?");
+                            console.error("Annotation server error--maybe you forgot to login to the server?");
                             console.error("HTTP status code: ", ioArgs.xhr.status);
                             //
                             // dojo.byId("replace").innerHTML = 'Loading the
@@ -6533,14 +6167,21 @@ define([
                     url: url ,
                     handleAs: "json",
                     load: function (response, ioArgs) {
-                        dojo.create("a", {
-                            innerHTML: response.filename,
-                            href: context_path + "/IOService/download?uuid=" + response.uuid + "&exportType=" + response.exportType + "&seqType=" + response.sequenceType + "&format=" + response.format,
-                            onclick:  function(){
-                                track.closeDialog();
-                            }
+                        if(response.error){
+                            // dojo.style(waitingDiv, {display: "none"});
+                            responseDiv.innerHTML = response.error
+                            // track.handleError(response);
+                        }
+                        else{
+                            dojo.create("a", {
+                                innerHTML: response.filename,
+                                href: context_path + "/IOService/download?uuid=" + response.uuid + "&exportType=" + response.exportType + "&seqType=" + response.sequenceType + "&format=" + response.format,
+                                onclick:  function(){
+                                    track.closeDialog();
+                                }
 
-                        }, content);
+                            }, content);
+                        }
                         dojo.style(waitingDiv, {display: "none"});
                     },
                     // The ERROR function will be called in an error case.
@@ -6780,13 +6421,13 @@ define([
             },
 
             handleError: function (response) {
-                console.log("ERROR: ");
-                console.log(response);  // in Firebug, allows retrieval of stack trace,
+                console.error("ERROR: ");
+                console.error(response);  // in Firebug, allows retrieval of stack trace,
                                         // jump to code, etc.
                 var error = response.responseText && response.responseText.match("^<") != "<" ? JSON.parse(response.responseText) : response.response.data;
                 if (error && error.error) {
                     alert(error.error);
-                    console.log(error.error);
+                    console.error(error.error);
                     return false;
                 }
             },
@@ -6810,7 +6451,7 @@ define([
                         }
                     },
                     error: function (response, ioArgs) { //
-                        console.log('Failed to log out cleanly.  May already be logged out.');
+                        console.error('Failed to log out cleanly.  May already be logged out.');
                     }
                 });
             },
@@ -6844,28 +6485,6 @@ define([
 
             login: function () {
                 this.showAnnotatorPanel();
-                // var track = this;
-                // dojo.xhrGet({
-                //     url: context_path + "/Login",
-                //     handleAs: "text",
-                //     timeout: 5 * 60,
-                //     load: function (response, ioArgs) {
-                //         var dialog = new dojoxDialogSimple({
-                //             preventCache: true,
-                //             refreshOnShow: true,
-                //             executeScripts: true
-                //
-                //         });
-                //         if (track.browser.config.disableJBrowseMode) {
-                //             dialog.hide = function () {
-                //             };
-                //         }
-                //         dialog.startup();
-                //         dialog.set("title", "Login");
-                //         dialog.set("content", response);
-                //         dialog.show();
-                //     }
-                // });
             },
 
             initLoginMenu: function () {
@@ -6878,7 +6497,7 @@ define([
                         new dijitMenuItem({
                             label: 'Logout',
                             onClick: function () {
-                                console.log("clicked stub for logging out");
+                                console.debug("clicked stub for logging out");
                                 // attempted to do
                                 // client-side session
                                 // cookie deletion, but
@@ -6952,7 +6571,6 @@ define([
             initAnnotContextMenu: function () {
 
                 // TODO: this list is duplicated
-                var topTypes = ['repeat_region','transposable_element','gene','pseudogene', 'SNV', 'SNP', 'MNV', 'MNP', 'indel', 'insertion', 'deletion','terminator'];
 
                 var thisB = this;
                 contextMenuItems = new Array();
@@ -6988,79 +6606,31 @@ define([
                 }));
                 contextMenuItems["zoom_to_base_level"] = index++;
 
-                annot_context_menu.addChild(new dijit.MenuItem({
-                    label: "View in Annotator Panel",
-                    onClick: function (event) {
-                        var selected = thisB.selectionManager.getSelection();
-                        var selectedFeature = selected[0].feature;
-                        var selectedFeatureDetails = selectedFeature.afeature;
-                        while(selectedFeature  ){
-                            if(topTypes.indexOf(selectedFeatureDetails.type.name)>=0){
-                                thisB.getApollo().viewInAnnotationPanel(selectedFeatureDetails.name);
-                                return ;
-                            }
-                            else
-                            if(topTypes.indexOf(selectedFeatureDetails.parent_type.name)>=0){
-                                thisB.getApollo().viewInAnnotationPanel(selectedFeatureDetails.parent_name);
-                                return ;
-                            }
-                            selectedFeature = selectedFeature._parent ;
-                            selectedFeatureDetails = selectedFeature.afeature ;
-                        }
-                        alert('Unable to focus on object');
-                    }
-                }));
-                contextMenuItems["view_in_annotator_panel"] = index++;
 
-              annot_context_menu.addChild(new dijit.MenuItem({
-                label: "View Go Annotations",
-                onClick: function (event) {
-                  var selected = thisB.selectionManager.getSelection();
-                  var selectedFeature = selected[0].feature;
-                  var selectedFeatureDetails = selectedFeature.afeature;
-                  while(selectedFeature  ){
-                    if(topTypes.indexOf(selectedFeatureDetails.type.name)>=0){
-                      thisB.getApollo().viewGoPanel(selectedFeatureDetails.name);
-                      return ;
-                    }
-                    else
-                    if(topTypes.indexOf(selectedFeatureDetails.parent_type.name)>=0){
-                      thisB.getApollo().viewGoPanel(selectedFeatureDetails.parent_name);
-                      return ;
-                    }
-                    selectedFeature = selectedFeature._parent ;
-                    selectedFeatureDetails = selectedFeature.afeature ;
-                  }
-                  alert('Unable to focus on object');
-                }
-              }));
-              contextMenuItems["view_go_annotation"] = index++;
+                if (permission & Permission.WRITE) {
 
-
-              if (!(permission & Permission.WRITE)) {
-                annot_context_menu.addChild(new dijit.MenuSeparator());
-                index++;
-                annot_context_menu.addChild(new dijit.MenuItem({
-                        label: "Information Editor (alt-click)",
+                    annot_context_menu.addChild(new dijit.MenuItem({
+                        label: "Open Annotation (alt-click)",
                         onClick: function (event) {
-                            thisB.getAnnotationInfoEditor();
+                            thisB.getNewAnnotationInfoEditor();
                         }
                     }));
                     contextMenuItems["annotation_info_editor"] = index++;
-                }
-                if (permission & Permission.WRITE) {
-                    //annot_context_menu.addChild(new dijit.MenuSeparator());
-                    //index++;
+
                     annot_context_menu.addChild(new dijit.MenuItem({
-                        label: "Edit Information (alt-click)",
+                        label: "Close editor",
                         onClick: function (event) {
-                            thisB.getAnnotationInfoEditor();
+                            thisB.getApollo().closeAnnotatorPanel();
                         }
                     }));
+                    contextMenuItems["close_editor"] = index++;
+
+                    annot_context_menu.addChild(new dijit.MenuSeparator());
+                    index++;
 
                     var changeAnnotationMenu = new dijitMenu();
                     changeAnnotationMenu.addChild(new dijitMenuItem( {
-                        label: "gene",
+                    label: "gene",
                         onClick: function(event) {
                             thisB.changeAnnotationType("mRNA");
                         }
@@ -7072,50 +6642,121 @@ define([
                             thisB.changeAnnotationType("transcript");
                         }
                     }));
-                    changeAnnotationMenu.addChild(new dijitMenuItem( {
+
+                    var nonCodingRnaAnnotationMenu = new dijitMenu();
+
+
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
                         label: "rRNA",
                         onClick: function(event) {
                             thisB.changeAnnotationType("rRNA");
                         }
                     }));
-                    changeAnnotationMenu.addChild(new dijitMenuItem( {
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
                         label: "snRNA",
                         onClick: function(event) {
                             thisB.changeAnnotationType("snRNA");
                         }
                     }));
-                    changeAnnotationMenu.addChild(new dijitMenuItem( {
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
                         label: "snoRNA",
                         onClick: function(event) {
                             thisB.changeAnnotationType("snoRNA");
                         }
                     }));
-                    changeAnnotationMenu.addChild(new dijitMenuItem( {
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
                         label: "tRNA",
                         onClick: function(event) {
                             thisB.changeAnnotationType("tRNA");
                         }
                     }));
-                    changeAnnotationMenu.addChild(new dijitMenuItem( {
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
                         label: "ncRNA",
                         onClick: function(event) {
                             thisB.changeAnnotationType("ncRNA");
                         }
                     }));
-                    changeAnnotationMenu.addChild(new dijitMenuItem( {
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
                         label: "miRNA",
                         onClick: function(event) {
                             thisB.changeAnnotationType("miRNA");
                         }
                     }));
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "guide_RNA",
+                        onClick: function(event) {
+                            thisB.changeAnnotationType("guide_RNA");
+                        }
+                    }));
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "RNase_MRP_RNA",
+                        onClick: function(event) {
+                            thisB.changeAnnotationType("RNase_MRP_RNA");
+                        }
+                    }));
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "telomerase_RNA",
+                        onClick: function(event) {
+                            thisB.changeAnnotationType("telomerase_RNA");
+                        }
+                    }));
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "SRP_RNA",
+                        onClick: function(event) {
+                            thisB.changeAnnotationType("SRP_RNA");
+                        }
+                    }));
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "lnc_RNA",
+                        onClick: function(event) {
+                            thisB.changeAnnotationType("lnc_RNA");
+                        }
+                    }));
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "RNase_P_RNA",
+                        onClick: function(event) {
+                            thisB.changeAnnotationType("RNase_P_RNA");
+                        }
+                    }));
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "scRNA",
+                        onClick: function(event) {
+                            thisB.changeAnnotationType("scRNA");
+                        }
+                    }));
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "piRNA",
+                        onClick: function(event) {
+                            thisB.changeAnnotationType("piRNA");
+                        }
+                    }));
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "tmRNA",
+                        onClick: function(event) {
+                            thisB.changeAnnotationType("tmRNA");
+                        }
+                    }));
+                    nonCodingRnaAnnotationMenu.addChild(new dijitMenuItem( {
+                        label: "enzymatic_RNA",
+                        onClick: function(event) {
+                            thisB.changeAnnotationType("enzymatic_RNA");
+                        }
+                    }));
+
+                    var nonCodingRnaAnnotationMenuItem = new dijitPopupMenuItem({
+                        label: "Non-coding RNA",
+                        popup: nonCodingRnaAnnotationMenu,
+                    });
+                    changeAnnotationMenu.addChild(nonCodingRnaAnnotationMenuItem)
+
+
                     changeAnnotationMenu.addChild(new dijitMenuItem( {
                         label: "Terminator",
                         onClick: function(event) {
-                            console.log('selecting terminator')
                             var selected = thisB.selectionManager.getSelection();
                             var selectedFeatureType = selected[0].feature.afeature.type.name === "exon" ?
                                 selected[0].feature.afeature.parent_type.name : selected[0].feature.afeature.type.name;
-                            if (selectedFeatureType != "transposable_element" && selectedFeatureType != "repeat_region" ) {
+                            if (selectedFeatureType != "transposable_element" && selectedFeatureType != "repeat_region" && selectedFeatureType != "Shine_Dalgarno_sequence" ) {
                                 var message = "Warning: You will not be able to revert back to " + selectedFeatureType + " via 'Change annotation type' menu option, use 'Undo' instead. Do you want to proceed?";
                                 thisB.confirmChangeAnnotationType(thisB, [selected], "terminator", message);
                             }
@@ -7124,13 +6765,28 @@ define([
                             }
                         }
                     }));
+                    // changeAnnotationMenu.addChild(new dijitMenuItem( {
+                    //     label: "Shine Dalgarno sequence",
+                    //     onClick: function(event) {
+                    //         var selected = thisB.selectionManager.getSelection();
+                    //         var selectedFeatureType = selected[0].feature.afeature.type.name === "exon" ?
+                    //             selected[0].feature.afeature.parent_type.name : selected[0].feature.afeature.type.name;
+                    //         if (selectedFeatureType != "transposable_element" && selectedFeatureType != "repeat_region"  && selectedFeatureType != "terminator" ) {
+                    //             var message = "Warning: You will not be able to revert back to " + selectedFeatureType + " via 'Change annotation type' menu option, use 'Undo' instead. Do you want to proceed?";
+                    //             thisB.confirmChangeAnnotationType(thisB, [selected], "repeat_region", message);
+                    //         }
+                    //         else {
+                    //             thisB.changeAnnotationType("Shine_Dalgarno_sequence");
+                    //         }
+                    //     }
+                    // }));
                     changeAnnotationMenu.addChild(new dijitMenuItem( {
                         label: "Repeat region",
                         onClick: function(event) {
                             var selected = thisB.selectionManager.getSelection();
                             var selectedFeatureType = selected[0].feature.afeature.type.name === "exon" ?
                                 selected[0].feature.afeature.parent_type.name : selected[0].feature.afeature.type.name;
-                            if (selectedFeatureType != "transposable_element" && selectedFeatureType != "terminator" ) {
+                            if (selectedFeatureType != "transposable_element" && selectedFeatureType != "terminator" && selectedFeatureType != "Shine_Dalgarno_sequence"  ) {
                                 var message = "Warning: You will not be able to revert back to " + selectedFeatureType + " via 'Change annotation type' menu option, use 'Undo' instead. Do you want to proceed?";
                                 thisB.confirmChangeAnnotationType(thisB, [selected], "repeat_region", message);
                             }
@@ -7145,7 +6801,7 @@ define([
                             var selected = thisB.selectionManager.getSelection();
                             var selectedFeatureType = selected[0].feature.afeature.type.name === "exon" ?
                                 selected[0].feature.afeature.parent_type.name : selected[0].feature.afeature.type.name;
-                            if (selectedFeatureType != "repeat_region" && selectedFeatureType != "terminator" ) {
+                            if (selectedFeatureType != "repeat_region" && selectedFeatureType != "terminator" && selectedFeatureType != "Shine_Dalgarno_sequence" ) {
                                 var message = "Warning: You will not be able to revert back to " + selectedFeatureType + " via 'Change annotation type' menu option, use 'Undo' instead. Do you want to proceed?";
                                 thisB.confirmChangeAnnotationType(thisB, [selected], "transposable_element", message);
                             }
@@ -7154,18 +6810,15 @@ define([
                             }
                         }
                     }));
-                    contextMenuItems["annotation_info_editor"] = index++;
-                    annot_context_menu.addChild(new dijit.MenuSeparator());
-                    index++;
                     var changeAnnotationMenuItem = new dijitPopupMenuItem( {
                         label: "Change annotation type",
                         popup: changeAnnotationMenu
                     });
                     annot_context_menu.addChild(changeAnnotationMenuItem);
+                    contextMenuItems["change_annotation_type"] = index++;
                     dojo.connect(changeAnnotationMenu, "onOpen", dojo.hitch(this, function() {
                         this.updateChangeAnnotationTypeMenu(changeAnnotationMenu);
                     }));
-                    contextMenuItems["annotation_info_editor"] = index++;
 
                     //
                     var associateTranscriptToGeneItem = new dijit.MenuItem({
@@ -7320,6 +6973,15 @@ define([
                     }));
                     contextMenuItems["set_longest_orf"] = index++;
 
+
+                    annot_context_menu.addChild(new dijit.MenuItem({
+                        label: "Set Optimal ORF",
+                        onClick: function (event) {
+                            thisB.setOptimalORF();
+                        }
+                    }));
+                    contextMenuItems["set_optimal_orf"] = index++;
+
                     annot_context_menu.addChild(new dijit.MenuItem({
                         label: "Remove CDS",
                         onClick: function (event) {
@@ -7390,7 +7052,7 @@ define([
                         }
                     }));
                     annot_context_menu.addChild(new dijit.MenuSeparator());
-                    index++;
+                    // index++;
                     annot_context_menu.addChild(new dijit.MenuItem({
                         label: "Undo",
                         onClick: function (event) {
@@ -7635,6 +7297,7 @@ define([
                 this.updateSetTranslationStartMenuItem();
                 this.updateSetTranslationEndMenuItem();
                 this.updateSetLongestOrfMenuItem();
+                this.updateSetOptimalOrfMenuItem();
                 this.updateRemoveCDSMenuItem();
                 this.updateAssociateTranscriptToGeneItem();
                 this.updateDissociateTranscriptFromGeneItem();
@@ -7769,6 +7432,7 @@ define([
              */
             updateRemoveVariantEffect: function(){
                 var menuItem = this.getMenuItem("remove_variant_effect");
+                if(!menuItem) return ;
                 var selected = this.selectionManager.getSelection();
                 menuItem.set("disabled", true);
                 if (selected.length === 0) {
@@ -7829,7 +7493,7 @@ define([
             },
 
             isSingleFeatureLabel:function(label){
-                return (label === "Transposable element" || label === "Terminator"  || label === "Repeat region" ) ;
+                return (label === "Transposable element" || label === "Terminator"  || label === "Shine Dalgarno sequence" || label === "Repeat region" ) ;
             },
 
             updateChangeAnnotationTypeMenu: function(changeAnnotationMenu) {
@@ -7870,6 +7534,9 @@ define([
                         menuItems[i].setDisabled(!this.isSingleFeatureLabel(menuItems[i].label));
                     }
                     else if (selectedType === "transposable_element") {
+                        menuItems[i].setDisabled(!this.isSingleFeatureLabel(menuItems[i].label));
+                    }
+                    else if (selectedType === "Shine_Dalgarno_sequence") {
                         menuItems[i].setDisabled(!this.isSingleFeatureLabel(menuItems[i].label));
                     }
                     else if (JSONUtils.variantTypes.includes(selectedType.toUpperCase())) {
@@ -8003,6 +7670,27 @@ define([
 
             updateSetLongestOrfMenuItem: function () {
                 var menuItem = this.getMenuItem("set_longest_orf");
+                var selected = this.selectionManager.getSelection();
+                if (selected.length > 1) {
+                    menuItem.set("disabled", true);
+                    return;
+                }
+                for (var i = 0; i < selected.length; ++i) {
+                    if (!this.isProteinCoding(selected[i].feature)) {
+                        menuItem.set("disabled", true);
+                        return;
+                    }
+                    if (!this.canEdit(selected[i].feature)) {
+                        menuItem.set("disabled", true);
+                        return;
+                    }
+                }
+
+                menuItem.set("disabled", false);
+            },
+
+            updateSetOptimalOrfMenuItem: function () {
+                var menuItem = this.getMenuItem("set_optimal_orf");
                 var selected = this.selectionManager.getSelection();
                 if (selected.length > 1) {
                     menuItem.set("disabled", true);
@@ -8194,10 +7882,6 @@ define([
                     menuItem.set("disabled", true);
                     return;
                 }
-                else {
-                    menuItem.set("disabled", false);
-                    return;
-                }
                 menuItem.set("disabled", false);
             },
 
@@ -8217,16 +7901,13 @@ define([
                     menuItem.set("disabled", true);
                     return;
                 }
-                else {
-                    menuItem.set("disabled", false);
-                    return;
-                }
                 menuItem.set("disabled", false);
             },
 
 
             updateHistoryMenuItem: function () {
                 var menuItem = this.getMenuItem("history");
+                if(!menuItem) return ;
                 var selected = this.selectionManager.getSelection();
                 var currentType = selected[0].feature.get('type');
                 if (selected.length > 1) {
@@ -8235,10 +7916,6 @@ define([
                 }
                 if (JSONUtils.variantTypes.includes(currentType.toUpperCase())) {
                     menuItem.set("disabled", true);
-                    return;
-                }
-                else {
-                    menuItem.set("disabled", false);
                     return;
                 }
                 menuItem.set("disabled", false);
@@ -8265,6 +7942,7 @@ define([
                         return;
                     }
                 }
+
                 if (JSONUtils.variantTypes.includes(currentType.toUpperCase())) {
                     menuItem.set("disabled", true);
                     return;

@@ -2,7 +2,6 @@ package org.bbop.apollo
 
 import grails.converters.JSON
 import grails.transaction.Transactional
-import org.apache.shiro.authc.UsernamePasswordToken
 import org.apache.shiro.crypto.hash.Sha256Hash
 import org.bbop.apollo.gwt.shared.FeatureStringEnum
 import org.bbop.apollo.gwt.shared.GlobalPermissionEnum
@@ -82,12 +81,16 @@ class UserController {
             def showInactiveUsers = dataObject.showInactiveUsers ?: false
             def omitEmptyOrganisms = dataObject.omitEmptyOrganisms != null ? dataObject.omitEmptyOrganisms : false
 
+//            log.debug "data object ${dataObject as JSON} . . . ${dataObject.userId.isInteger()} ${dataObject.userId.isLong() }"
+
+
             def users = c.list(max: maxResults, offset: offset) {
-                if (dataObject.userId && dataObject.userId in Integer) {
-                    eq('id', (Long) dataObject.userId)
+                if (dataObject.userId && (dataObject.userId instanceof Number || dataObject.userId.isLong())) {
+                    eq('id', dataObject.userId as Long)
                 }
-                if (dataObject.userId && dataObject.userId in String) {
-                    eq('username', dataObject.userId)
+                else
+                if (dataObject.userId) {
+                    eq('username', dataObject.userId as String)
                 }
                 if (searchName) {
                     or {
@@ -253,9 +256,12 @@ class UserController {
 
             def userObject = userService.convertUserToJson(currentUser)
 
-            if ((!userOrganismPreference || !permissionService.hasAnyPermissions(currentUser)) && !permissionService.isUserBetterOrEqualRank(currentUser, GlobalPermissionEnum.INSTRUCTOR)) {
+          // if lacks permissions and is not an instructor then there are no organisms to share
+            if (!permissionService.hasAnyPermissions(currentUser) && !permissionService.isUserBetterOrEqualRank(currentUser, GlobalPermissionEnum.INSTRUCTOR)) {
                 userObject.put(FeatureStringEnum.ERROR.value, "You do not have access to any organism on this server.  Please contact your administrator.")
-            } else if (userOrganismPreference) {
+            }
+
+            if (userOrganismPreference) {
                 userObject.put("tracklist", userOrganismPreference.nativeTrackList)
             }
 
@@ -407,7 +413,14 @@ class UserController {
 
             log.info "Added user ${user.username} with role ${role.name}"
 
-            render new JSONObject() as JSON
+            JSONObject jsonObject = user.properties
+            log.debug "json object ${jsonObject as JSON}"
+            jsonObject.email = user.username
+            jsonObject.username = user.username
+            jsonObject.id = user.id
+            jsonObject.userId = user.id
+            log.debug "rendering json object "
+            render jsonObject as JSON
         } catch (e) {
             log.error(e.fillInStackTrace())
             JSONObject jsonObject = new JSONObject()
@@ -451,9 +464,9 @@ class UserController {
             // instead of using !permissionService.isAdmin() because it only works for login user but doesn't work for webservice
             // allow delete a user if the current user is global admin or the current user is the creator of the user
             if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN) && !(creatorMetaData && currentUser.id.toString() == creatorMetaData)) {
-                //render status: HttpStatus.UNAUTHORIZED
                 def error = [error: 'not authorized to delete the user']
                 log.error(error.error)
+                response.status = HttpStatus.UNAUTHORIZED.value()
                 render error as JSON
                 return
             }
@@ -514,6 +527,7 @@ class UserController {
             if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN) && !(creatorMetaData && currentUser.id.toString() == creatorMetaData)) {
                 //render status: HttpStatus.UNAUTHORIZED
                 def error = [error: 'not authorized to activate the user']
+                response.status = HttpStatus.UNAUTHORIZED.value()
                 log.error(error.error)
                 render error as JSON
                 return
@@ -566,9 +580,9 @@ class UserController {
             // instead of using !permissionService.isAdmin() because it only works for login user but doesn't work for webservice
             // allow delete a user if the current user is global admin or the current user is the creator of the user
             if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN) && !(creatorMetaData && currentUser.id.toString() == creatorMetaData)) {
-                //render status: HttpStatus.UNAUTHORIZED
                 def error = [error: 'not authorized to delete the user']
                 log.error(error.error)
+                response.status = HttpStatus.UNAUTHORIZED.value()
                 render error as JSON
                 return
             }
@@ -580,11 +594,18 @@ class UserController {
             UserTrackPermission.deleteAll(UserTrackPermission.findAllByUser(user))
             UserOrganismPermission.deleteAll(UserOrganismPermission.findAllByUser(user))
             UserOrganismPreference.deleteAll(UserOrganismPreference.findAllByUser(user))
-            user.delete(flush: true)
 
             log.info "Removed user ${user.username}"
 
-            render new JSONObject() as JSON
+            JSONObject jsonObject = user.properties
+            log.debug "json object ${jsonObject as JSON}"
+            jsonObject.email = user.username
+            jsonObject.username = user.username
+            jsonObject.id = user.id
+            jsonObject.userId = user.id
+            log.debug "rendering json object "
+            render jsonObject as JSON
+            user.delete(flush: true)
         } catch (e) {
             log.error(e.fillInStackTrace())
             JSONObject jsonObject = new JSONObject()
@@ -631,9 +652,9 @@ class UserController {
             // instead of using !permissionService.isAdmin() because it only works for login user but doesn't work for webservice
             // allow update a user if the current user is global admin or the current user is the creator of the user
             if (!permissionService.sameUser(dataObject, request) && !permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN) && !(creatorMetaData && currentUser.id.toString() == creatorMetaData)) {
-                //render status: HttpStatus.UNAUTHORIZED
                 def error = [error: 'not authorized to update the user']
                 log.error(error.error)
+                response.status = HttpStatus.UNAUTHORIZED.value()V
                 render error as JSON
                 return
             }
@@ -683,7 +704,11 @@ class UserController {
     ])
     def getOrganismPermissionsForUser() {
         JSONObject dataObject = permissionService.handleInput(request, params)
-        // to support webservice using either userId or username
+        if (!permissionService.hasPermissions(dataObject, PermissionEnum.USER)) {
+          render status: HttpStatus.UNAUTHORIZED
+          return
+        }
+      // to support webservice using either userId or username
         User user = dataObject.userId ? User.findById(dataObject.userId as Long) : User.findByUsername(dataObject.username)
         List<UserOrganismPermission> userOrganismPermissionList = UserOrganismPermission.findAllByUser(user)
 
@@ -786,6 +811,7 @@ class UserController {
         if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN)) {
             def error = [error: 'not authorized to view the metadata']
             log.error(error.error)
+            response.status = HttpStatus.UNAUTHORIZED.value()
             render error as JSON
             return
         }

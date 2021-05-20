@@ -4,13 +4,15 @@ import grails.converters.JSON
 import grails.transaction.NotTransactional
 import grails.transaction.Transactional
 import org.bbop.apollo.event.AnnotationEvent
+import org.bbop.apollo.geneProduct.GeneProduct
+import org.bbop.apollo.go.GoAnnotation
 import org.bbop.apollo.gwt.shared.ClientTokenGenerator
 import org.bbop.apollo.gwt.shared.FeatureStringEnum
 import org.bbop.apollo.gwt.shared.GlobalPermissionEnum
 import org.bbop.apollo.gwt.shared.PermissionEnum
+import org.bbop.apollo.history.FeatureOperation
 import org.bbop.apollo.report.AnnotatorSummary
 import org.codehaus.groovy.grails.web.json.JSONArray
-import org.codehaus.groovy.grails.web.json.JSONException
 import org.codehaus.groovy.grails.web.json.JSONObject
 import org.hibernate.FetchMode
 import org.restapidoc.annotation.RestApi
@@ -20,6 +22,8 @@ import org.restapidoc.annotation.RestApiParams
 import org.restapidoc.pojo.RestApiParamType
 import org.restapidoc.pojo.RestApiVerb
 import org.springframework.http.HttpStatus
+
+import static org.springframework.http.HttpStatus.UNAUTHORIZED
 
 /**
  * This is server-side code supporting the high-level functionality of the GWT AnnotatorPanel class.
@@ -39,6 +43,7 @@ class AnnotatorController {
     def variantService
     def grailsApplication
     def jsonWebUtilityService
+    def featureEventService
 
     private List<String> reservedList = ["loc",
                                          FeatureStringEnum.CLIENT_TOKEN.value,
@@ -57,6 +62,7 @@ class AnnotatorController {
     def loadLink() {
         log.debug "Parameter for loadLink: ${params} vs ${request.parameterMap}"
         String clientToken
+        String searchName = null
         try {
             if (params.containsKey(FeatureStringEnum.CLIENT_TOKEN.value)) {
                 clientToken = params[FeatureStringEnum.CLIENT_TOKEN.value]
@@ -64,7 +70,7 @@ class AnnotatorController {
                 clientToken = ClientTokenGenerator.generateRandomString()
                 log.debug 'generating client token on the backend: ' + clientToken
             }
-            Organism organism
+            Organism organism = null
             // check organism first
             if (params.containsKey(FeatureStringEnum.ORGANISM.value)) {
                 String organismString = params[FeatureStringEnum.ORGANISM.value]
@@ -83,6 +89,13 @@ class AnnotatorController {
                 organism = featureLocation.sequence.organism
             }
 
+            if (Feature.countByUniqueName(params.loc) > 0) {
+                Feature feature = Feature.findByUniqueName(params.loc)
+                FeatureLocation featureLocation = feature.featureLocation
+                params.loc = featureLocation.sequence.name + ":" + featureLocation.fmin + ".." + featureLocation.fmax
+                organism = featureLocation.sequence.organism
+            }
+
             if (!allowedOrganisms.contains(organism)) {
                 log.error("Can not load organism ${organism?.commonName} so loading ${allowedOrganisms.first().commonName} instead.")
                 params.loc = null
@@ -92,27 +105,41 @@ class AnnotatorController {
             log.debug "loading organism: ${organism}"
             preferenceService.setCurrentOrganism(permissionService.currentUser, organism, clientToken)
             String location = params.loc
+
             // assume that the lookup is a symbol lookup value and not a location
-            if (location && location.contains(':') && location.contains('..')) {
-                String[] splitString = location.split(':')
-                log.debug "splitString : ${splitString}"
-                String sequenceString = splitString[0]
-                Sequence sequence = Sequence.findByOrganismAndName(organism, sequenceString)
-                String[] minMax = splitString[1].split("\\.\\.")
+            if (location) {
+                int colonIndex = location.indexOf(':')
+                int ellipseIndex = location.indexOf('..')
 
-                log.debug "minMax: ${minMax}"
-                int fmin, fmax
-                try {
-                    fmin = minMax[0] as Integer
-                    fmax = minMax[1] as Integer
-                } catch (e) {
-                    log.error "error parsing ${e}"
-                    fmin = sequence.start
-                    fmax = sequence.end
+                if (colonIndex > 0 && colonIndex < ellipseIndex) {
+                    String[] splitString = location.split(':')
+                    log.debug "splitString : ${splitString}"
+                    String sequenceString = splitString[0]
+                    Sequence sequence = Sequence.findByOrganismAndName(organism, sequenceString)
+                    String[] minMax = splitString[1].split("\\.\\.")
+
+                    log.debug "minMax: ${minMax}"
+                    int fmin, fmax
+                    try {
+                        fmin = minMax[0] as Integer
+                        fmax = minMax[1] as Integer
+                    } catch (e) {
+                        log.error "error parsing ${e}"
+                        fmin = sequence.start
+                        fmax = sequence.end
+                    }
+                    log.debug "fmin ${fmin} . . fmax ${fmax} . . ${sequence}"
+                    preferenceService.setCurrentSequenceLocation(sequence.name, fmin, fmax, clientToken)
+                } else if (organism && location.trim().length() > 0) {
+                    def featureLocationResult = FeatureLocation.executeQuery("select fl,s from Feature f join f.featureLocations fl join fl.sequence s join s.organism o where o = :organism and f.name = :name", [organism: organism, name: location]).first()
+                    FeatureLocation featureLocation = featureLocationResult[0]
+                    Sequence sequence = featureLocationResult[1]
+                    int fmin = featureLocation.fmin
+                    int fmax = featureLocation.fmax
+                    preferenceService.setCurrentSequenceLocation(sequence.name, fmin, fmax, clientToken)
+                } else {
+                    log.error("Failed to process load process loadLink string")
                 }
-                log.debug "fmin ${fmin} . . fmax ${fmax} . . ${sequence}"
-
-                preferenceService.setCurrentSequenceLocation(sequence.name, fmin, fmax, clientToken)
             }
         }
 
@@ -132,6 +159,10 @@ class AnnotatorController {
             }
         }
 
+
+        if (searchName) {
+            queryParamString += "&searchLocation=${searchName}"
+        }
         if (queryParamString.contains("http://") || queryParamString.contains("https://") ||
                 queryParamString.contains("ftp://")) {
             redirect uri: "${request.contextPath}/annotator/index?clientToken=" + clientToken + queryParamString
@@ -183,7 +214,10 @@ class AnnotatorController {
             , @RestApiParam(name = "uniquename", type = "string", paramType = RestApiParamType.QUERY, description = "Uniquename (UUID) of the feature we are editing")
             , @RestApiParam(name = "name", type = "string", paramType = RestApiParamType.QUERY, description = "Updated feature name")
             , @RestApiParam(name = "symbol", type = "string", paramType = RestApiParamType.QUERY, description = "Updated feature symbol")
+            , @RestApiParam(name = "synonyms", type = "string", paramType = RestApiParamType.QUERY, description = "Updated synonyms pipe (|) separated")
             , @RestApiParam(name = "description", type = "string", paramType = RestApiParamType.QUERY, description = "Updated feature description")
+            , @RestApiParam(name = "status", type = "string", paramType = RestApiParamType.QUERY, description = "Updated status")
+            , @RestApiParam(name = "obsolete", type = "boolean", paramType = RestApiParamType.QUERY, description = "Updated if obsolete")
     ]
     )
     @Transactional
@@ -196,13 +230,66 @@ class AnnotatorController {
         }
         Feature feature = Feature.findByUniqueName(data.uniquename)
 
+        FeatureOperation featureOperation = detectFeatureOperation(feature, data)
+        JSONObject originalFeatureJsonObject = featureService.convertFeatureToJSON(feature)
+
+        boolean nameChange = feature.name != data.name
         feature.name = data.name
         feature.symbol = data.symbol
         feature.description = data.description
+        feature.isObsolete = data.obsolete
+        if (data.containsKey("obsolete")) {
+            feature.isObsolete = data.getBoolean("obsolete")
+        }
+
+        def oldSynonymNames = feature.featureSynonyms ? feature.featureSynonyms.synonym.name.sort() : []
+        def newSynonymNames = data.synonyms ? data.synonyms.split("\\|").sort() : []
+        def synonymsToAdd = newSynonymNames.findAll { n -> !oldSynonymNames.contains(n) }
+        def synonymsToRemove = oldSynonymNames.findAll { n -> !newSynonymNames.contains(n) }
+
+        log.debug "old synonym names ${oldSynonymNames} ${newSynonymNames} ${synonymsToAdd} ${synonymsToRemove}"
+        // add missing
+
+        if (featureOperation == null && (synonymsToRemove.size() > 0 || synonymsToAdd.size() > 0)) {
+            featureOperation = FeatureOperation.SET_SYNONYMS
+        }
+
+        for (syn in synonymsToRemove) {
+            def featureSynonymsToRemove = FeatureSynonym.executeQuery("select fs from FeatureSynonym fs where fs.feature = :feature and fs.synonym.name = :name", [feature: feature, name: syn])
+            for (fs in featureSynonymsToRemove) {
+                feature.removeFromFeatureSynonyms(fs)
+                Synonym synonym = fs.synonym
+                fs.delete()
+                synonym.delete()
+            }
+        }
+
+        for (syn in synonymsToAdd) {
+            Synonym synonym = new Synonym(
+                    name: syn,
+            ).save(failOnError: true)
+            FeatureSynonym featureSynonym = new FeatureSynonym(
+                    feature: feature,
+                    synonym: synonym,
+            ).save(failOnError: true)
+            feature.addToFeatureSynonyms(featureSynonym)
+        }
+
+        if (data.status == null) {
+            // delete old status if it existed
+            Status oldStatus = data.status
+            feature.status == null
+            if (oldStatus != null) {
+                oldStatus.delete()
+            }
+        } else {
+            Status status = Status.findOrSaveByValueAndFeature(data.status, feature)
+            feature.status = status
+        }
 
         feature.save(flush: true, failOnError: true)
 
-        JSONObject updateFeatureContainer = jsonWebUtilityService.createJSONFeatureContainer();
+        JSONObject updateFeatureContainer = jsonWebUtilityService.createJSONFeatureContainer()
         if (feature instanceof Gene) {
             List<Feature> childFeatures = feature.parentFeatureRelationships*.childFeature
             for (childFeature in childFeatures) {
@@ -215,6 +302,20 @@ class AnnotatorController {
         }
 
         Sequence sequence = feature?.featureLocation?.sequence
+        User user = permissionService.getCurrentUser(data)
+        JSONObject currentFeatureJsonObject = featureService.convertFeatureToJSON(feature)
+
+        JSONArray oldFeaturesJsonArray = new JSONArray()
+        oldFeaturesJsonArray.add(originalFeatureJsonObject)
+        JSONArray newFeaturesJsonArray = new JSONArray()
+        newFeaturesJsonArray.add(currentFeatureJsonObject)
+        featureEventService.addNewFeatureEvent(featureOperation,
+                feature.name,
+                feature.uniqueName,
+                data,
+                oldFeaturesJsonArray,
+                newFeaturesJsonArray,
+                user)
 
         AnnotationEvent annotationEvent = new AnnotationEvent(
                 features: updateFeatureContainer
@@ -222,7 +323,76 @@ class AnnotatorController {
                 , operation: AnnotationEvent.Operation.UPDATE
                 , sequenceAlterationEvent: false
         )
-        requestHandlingService.fireAnnotationEvent(annotationEvent)
+        if (nameChange) {
+            requestHandlingService.fireAnnotationEvent(annotationEvent)
+        }
+
+        render updateFeatureContainer
+    }
+
+/**
+ * updates shallow properties of gene / feature
+ * @return
+ */
+    @RestApiMethod(description = "Update partial fmin / famx", path = "/annotator/updatePartials", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "uniquename", type = "string", paramType = RestApiParamType.QUERY, description = "Uniquename (UUID) of the feature we are editing")
+            , @RestApiParam(name = "data", type = "string", paramType = RestApiParamType.QUERY, description = "Annotation Info object")
+    ]
+    )
+    @Transactional
+    def updatePartials() {
+        log.debug "update partials  ${params.data}"
+        JSONObject data = permissionService.handleInput(request, params)
+        if (!permissionService.hasPermissions(data, PermissionEnum.WRITE)) {
+            render status: HttpStatus.UNAUTHORIZED
+            return
+        }
+        Feature feature = Feature.findByUniqueName(data.uniquename)
+        FeatureLocation featureLocation = feature.featureLocation
+
+        boolean isFminPartial = feature.featureLocation.isFminPartial
+        boolean isFmaxPartial = feature.featureLocation.isFmaxPartial
+
+        JSONObject originalFeatureJsonObject = featureService.convertFeatureToJSON(feature)
+        FeatureOperation featureOperation
+        if (data.containsKey(FeatureStringEnum.IS_FMIN_PARTIAL.value)
+                &&
+                data.getBoolean(FeatureStringEnum.IS_FMIN_PARTIAL.value) != isFminPartial
+        ) {
+            featureOperation = FeatureOperation.SET_PARTIAL_FMIN
+//            featureLocation.isFminPartial = data.getBoolean(FeatureStringEnum.IS_FMIN_PARTIAL.value)
+            featureService.setPartialFmin(feature, data.getBoolean(FeatureStringEnum.IS_FMIN_PARTIAL.value).booleanValue(), feature.featureLocation.fmin)
+        } else if (data.containsKey(FeatureStringEnum.IS_FMAX_PARTIAL.value)
+                &&
+                data.getBoolean(FeatureStringEnum.IS_FMAX_PARTIAL.value) != isFmaxPartial
+        ) {
+            featureOperation = FeatureOperation.SET_PARTIAL_FMAX
+            featureService.setPartialFmax(feature, data.getBoolean(FeatureStringEnum.IS_FMAX_PARTIAL.value).booleanValue(), feature.featureLocation.fmax)
+        } else {
+            throw new AnnotationException("Partials have not changed, so not doing anything")
+        }
+        featureLocation.save(flush: true, failOnError: true, insert: false)
+
+        JSONObject updateFeatureContainer = jsonWebUtilityService.createJSONFeatureContainer()
+        // its either a gene or
+
+        User user = permissionService.getCurrentUser(data)
+        JSONObject currentFeatureJsonObject = featureService.convertFeatureToJSON(feature)
+
+        JSONArray oldFeaturesJsonArray = new JSONArray()
+        oldFeaturesJsonArray.add(originalFeatureJsonObject)
+        JSONArray newFeaturesJsonArray = new JSONArray()
+        newFeaturesJsonArray.add(currentFeatureJsonObject)
+        featureEventService.addNewFeatureEvent(featureOperation,
+                feature.name,
+                feature.uniqueName,
+                data,
+                oldFeaturesJsonArray,
+                newFeaturesJsonArray,
+                user)
 
         render updateFeatureContainer
     }
@@ -263,7 +433,9 @@ class AnnotatorController {
         jsonObject.put("operation", "set_exon_boundaries")
         jsonObject.put(FeatureStringEnum.USERNAME.value, data.username)
 
-        return requestHandlingService.setExonBoundaries(jsonObject)
+        requestHandlingService.setExonBoundaries(jsonObject)
+        JSONObject updateFeatureContainer = jsonWebUtilityService.createJSONFeatureContainer()
+        render updateFeatureContainer
     }
 
 
@@ -275,13 +447,32 @@ class AnnotatorController {
  * @param annotationName
  * @param type
  * @param user
+ * @param status
+ * @param range
  * @param offset
  * @param max
  * @param sortorder
  * @param sort
+ * @param searchUniqueName
  * @return
  */
-    def findAnnotationsForSequence(String sequenceName, String request, String annotationName, String type, String user, Integer offset, Integer max, String sortorder, String sort, String clientToken,Boolean showOnlyGoAnnotations) {
+    def findAnnotationsForSequence(
+            String sequenceName
+            , String request
+            , String annotationName
+            , String type
+            , String user
+            , Integer offset
+            , Integer max
+            , String sortorder
+            , String sort
+            , String clientToken
+            , Boolean showOnlyGoAnnotations
+            , Boolean showOnlyGeneProductAnnotations
+            , Boolean showOnlyProvenanceAnnotations
+            , Boolean searchUniqueName
+            , String range
+            , String statusString) {
         try {
             JSONObject returnObject = jsonWebUtilityService.createJSONFeatureContainer()
             returnObject.clientToken = clientToken
@@ -302,11 +493,16 @@ class AnnotatorController {
                 switch (type) {
                     case "Gene": viewableTypes.add(Gene.class.canonicalName)
                         break
-                    case "Pseudogene": viewableTypes.add(Pseudogene.class.canonicalName)
+                    case "Pseudogene":
+                        viewableTypes.add(Pseudogene.class.canonicalName)
+                        viewableTypes.add(PseudogenicRegion.class.canonicalName)
+                        viewableTypes.add(ProcessedPseudogene.class.canonicalName)
                         break
                     case "repeat_region": viewableTypes.add(RepeatRegion.class.canonicalName)
                         break
                     case "terminator": viewableTypes.add(Terminator.class.canonicalName)
+                        break
+                    case "Shine_Dalgarno_sequence": viewableTypes.add(ShineDalgarnoSequence.class.canonicalName)
                         break
                     case "transposable_element": viewableTypes.add(TransposableElement.class.canonicalName)
                         break
@@ -340,9 +536,63 @@ class AnnotatorController {
                         }
                         eq('organism', organism)
                     }
+                    if (range) {
+                        Sequence sequenceNameRange = Sequence.findByNameAndOrganism(range.split(":")[0], organism)
+                        Integer fmin = Integer.parseInt(range.split(":")[1].split("\\.\\.")[0])
+                        Integer fmax = Integer.parseInt(range.split(":")[1].split("\\.\\.")[1])
+                        eq('sequence', sequenceNameRange)
+                        or {
+                            // case A, left-edge or overlaps
+                            and {
+                                lte("fmin", fmin)
+                                gte("fmax", fmin)
+                            }
+                            // case B, inbetween
+                            and {
+                                gte("fmin", fmin)
+                                lte("fmax", fmax)
+                            }
+//                            // case C, overlaps
+//                            and{
+//                                lte("fmin",fmin)
+//                                gte("fmax",fmax)
+//                            }
+                            and {
+                                lte("fmin", fmax)
+                                gte("fmax", fmax)
+                            }
+                        }
+                    }
                 }
-                if( showOnlyGoAnnotations){
-                    goAnnotations{
+                if (statusString != "") {
+                    // should work in null or non-null state
+                    if (statusString == FeatureStringEnum.NO_STATUS_ASSIGNED.value) {
+                        isNull("status")
+                    } else if (statusString == FeatureStringEnum.ANY_STATUS_ASSIGNED.value) {
+                        status {
+                        }
+                    } else {
+                        if (statusString.startsWith(FeatureStringEnum.NOT.value + ":")) {
+                            status {
+                                ne("value", statusString.split(":")[1])
+                            }
+                        } else {
+                            status {
+                                eq("value", statusString)
+                            }
+                        }
+                    }
+                }
+                if (showOnlyGoAnnotations) {
+                    goAnnotations {
+                    }
+                }
+                if (showOnlyGeneProductAnnotations) {
+                    geneProducts {
+                    }
+                }
+                if (showOnlyProvenanceAnnotations) {
+                    provenances {
                     }
                 }
                 if (sort == "name") {
@@ -352,7 +602,11 @@ class AnnotatorController {
                     order('lastUpdated', sortorder)
                 }
                 if (annotationName) {
-                    ilike('name', '%' + annotationName + '%')
+                    if (searchUniqueName) {
+                        ilike('uniqueName', '%' + annotationName + '%')
+                    } else {
+                        ilike('name', '%' + annotationName + '%')
+                    }
                 }
                 if (user) {
                     owners {
@@ -381,10 +635,13 @@ class AnnotatorController {
                 if (sort == "date") {
                     order('lastUpdated', sortorder)
                 }
-                if( showOnlyGoAnnotations){
+                if (showOnlyGoAnnotations) {
                     fetchMode 'goAnnotations', FetchMode.JOIN
                 }
                 fetchMode 'owners', FetchMode.JOIN
+                fetchMode 'featureSynonyms', FetchMode.JOIN
+                fetchMode 'featureDBXrefs', FetchMode.JOIN
+                fetchMode 'featureProperties', FetchMode.JOIN
                 fetchMode 'featureLocations', FetchMode.JOIN
                 fetchMode 'featureLocations.sequence', FetchMode.JOIN
                 fetchMode 'parentFeatureRelationships', FetchMode.JOIN
@@ -399,15 +656,15 @@ class AnnotatorController {
                 fetchMode 'parentFeatureRelationships.childFeature.featureLocations.sequence', FetchMode.JOIN
                 fetchMode 'parentFeatureRelationships.childFeature.owners', FetchMode.JOIN
             }
-            long durationInMilliseconds = System.currentTimeMillis() - start;
+            long durationInMilliseconds = System.currentTimeMillis() - start
             log.debug "criteria query ${durationInMilliseconds}"
 
-            start = System.currentTimeMillis();
+            start = System.currentTimeMillis()
             for (Feature feature in features) {
                 JSONObject featureObject = featureService.convertFeatureToJSONLite(feature, false, 0)
                 returnObject.getJSONArray(FeatureStringEnum.FEATURES.value).put(featureObject)
             }
-            durationInMilliseconds = System.currentTimeMillis() - start;
+            durationInMilliseconds = System.currentTimeMillis() - start
             log.debug "convert to json ${durationInMilliseconds}"
 
             returnObject.put(FeatureStringEnum.REQUEST_INDEX.getValue(), index + 1)
@@ -440,7 +697,7 @@ class AnnotatorController {
 
         JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
         for (int i = 0; i < featuresArray.size(); i++) {
-            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            JSONObject jsonFeature = featuresArray.getJSONObject(i)
             Feature feature = variantService.updateAlternateAlleles(jsonFeature)
             JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
             updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
@@ -460,7 +717,7 @@ class AnnotatorController {
 
         JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
         for (int i = 0; i < featuresArray.size(); i++) {
-            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            JSONObject jsonFeature = featuresArray.getJSONObject(i)
             Feature feature = variantService.addAlleleInfo(jsonFeature)
             JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
             updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
@@ -479,7 +736,7 @@ class AnnotatorController {
 
         JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
         for (int i = 0; i < featuresArray.size(); i++) {
-            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            JSONObject jsonFeature = featuresArray.getJSONObject(i)
             Feature feature = variantService.updateAlleleInfo(jsonFeature)
             JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
             updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
@@ -498,7 +755,7 @@ class AnnotatorController {
 
         JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
         for (int i = 0; i < featuresArray.size(); i++) {
-            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            JSONObject jsonFeature = featuresArray.getJSONObject(i)
             Feature feature = variantService.deleteAlleleInfo(jsonFeature)
             JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
             updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
@@ -517,7 +774,7 @@ class AnnotatorController {
 
         JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
         for (int i = 0; i < featuresArray.size(); i++) {
-            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            JSONObject jsonFeature = featuresArray.getJSONObject(i)
             Feature feature = variantService.addVariantInfo(jsonFeature)
             JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
             updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
@@ -536,7 +793,7 @@ class AnnotatorController {
 
         JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
         for (int i = 0; i < featuresArray.size(); i++) {
-            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            JSONObject jsonFeature = featuresArray.getJSONObject(i)
             Feature feature = variantService.updateVariantInfo(jsonFeature)
             JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
             updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
@@ -555,7 +812,7 @@ class AnnotatorController {
 
         JSONArray featuresArray = dataObject.getJSONArray(FeatureStringEnum.FEATURES.value)
         for (int i = 0; i < featuresArray.size(); i++) {
-            JSONObject jsonFeature = featuresArray.getJSONObject(i);
+            JSONObject jsonFeature = featuresArray.getJSONObject(i)
             Feature feature = variantService.deleteVariantInfo(jsonFeature)
             JSONObject updatedJsonFeature = featureService.convertFeatureToJSON(feature)
             updateFeatureContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(updatedJsonFeature)
@@ -566,13 +823,22 @@ class AnnotatorController {
 /**
  * This is a public passthrough to version
  */
-    def version() {
-      println "version "
+    @RestApiMethod(description = "Get system info", path = "/system", verb = RestApiVerb.GET)
+    @RestApiParams(params = [])
+    def system() {
+        def jsonObject = new JSONObject()
+        jsonObject.apollo_version = grails.util.Metadata.current['app.version']
+        jsonObject.grails_version = GroovySystem.getVersion()
+        jsonObject.jvm_version = System.getProperty("java.version")
+        jsonObject.serverInfo = servletContext.getServerInfo()
+        jsonObject.jbrowse_branch = grailsApplication.config?.jbrowse?.git
+        jsonObject.jbrowse_url = grailsApplication.config?.jbrowse?.git?.url
+        render jsonObject as JSON
     }
 
-  def about(){
-    println "about . . . . "
-  }
+    // used in the view
+    def about() {
+    }
 /**
  * This is a very specific method for the GWT interface.
  * An additional method should be added.
@@ -586,23 +852,66 @@ class AnnotatorController {
         render annotatorService.getAppState(params.get(FeatureStringEnum.CLIENT_TOKEN.value).toString()) as JSON
     }
 
+    @RestApiMethod(description = "Update common path and return system info", path = "/updateCommonPath", verb = RestApiVerb.POST)
+    @RestApiParams(params =[
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "directory", type = "string",  paramType = RestApiParamType.QUERY, description = "Relative or absolute common path directory")
+    ])
     @Transactional
-    String updateCommonPath(String directory) {
-        log.debug "Updating the common path for ${directory}"
+    String updateCommonPath() {
+        JSONObject dataObject = permissionService.handleInput(request, params)
         JSONObject returnObject = new JSONObject()
+        String directory = dataObject.directory
 
         try {
+            if (!permissionService.hasGlobalPermissions(dataObject, GlobalPermissionEnum.ADMIN)) {
+                render status: HttpStatus.UNAUTHORIZED
+                return
+            }
             String returnString = trackService.updateCommonDataDirectory(directory) as String
-            log.info "Returning common data directory ${returnString}"
-            if(returnString){
+            if (returnString) {
                 returnObject.error = returnString
             }
+            render getSystemInfo()
+            return
         } catch (e) {
             returnObject.error = e.getMessage()
         }
         render returnObject as JSON
     }
 
+    @RestApiMethod(description = "Get system info", path = "/getSystemInfo", verb = RestApiVerb.POST)
+    @Transactional(readOnly  = true )
+    String getSystemInfo() {
+        log.debug "Getting the common data path"
+        JSONObject returnObject = new JSONObject()
+
+        try {
+            String returnString = trackService.getCommonDataDirectory()
+            log.debug "Returning common data directory ${returnString}"
+            if (returnString) {
+                returnObject.error = returnString
+            }
+            File file = new File(returnString)
+            returnObject.put("relativePath",returnString)
+            returnObject.put("absolutePath",file.absolutePath)
+            returnObject.put("absolute",file.absolute)
+            returnObject.put("exists",file.exists())
+            returnObject.put("writable",file.canWrite())
+            returnObject.put("readable",file.canRead())
+            returnObject.put("directory",file.isDirectory())
+            returnObject.put("executable",file.canExecute())
+            returnObject.put("freeSpace",file.getFreeSpace())
+            returnObject.put("totalSpace",file.getTotalSpace())
+            returnObject.put("usableSpace",file.getUsableSpace())
+            returnObject.put("root",new File("").absolutePath)
+            returnObject.put("realPath",servletContext.getRealPath("/"))
+        } catch (e) {
+            returnObject.error = e.getMessage()
+        }
+        render returnObject as JSON
+    }
 /**
  */
     @Transactional
@@ -638,6 +947,8 @@ class AnnotatorController {
 
     def notAuthorized() {
         log.error "not authorized"
+        response.status = HttpStatus.UNAUTHORIZED.value()
+        render new JSONObject(["error": "Not authorized"])
     }
 
 /**
@@ -760,6 +1071,127 @@ class AnnotatorController {
         exportService.export(params.format, response.outputStream, annotatorGroupList, fields, labels, formatters, parameters)
     }
 
+
+    @RestApiMethod(description = "Get annotators report for group", path = "/group/getAnnotatorsReportForGroup", verb = RestApiVerb.POST)
+    @RestApiParams(params = [
+            @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "password", type = "password", paramType = RestApiParamType.QUERY)
+            , @RestApiParam(name = "data", type = "json strong", paramType = RestApiParamType.QUERY, description = "JSON of go annotations, gene products , and provenance to be added at once (see upload annotations in interface)")
+    ]
+    )
+    def addFunctionalAnnotations(){
+        JSONObject dataObject = permissionService.handleInput(request, params)
+        println "input data object ${dataObject as JSON}"
+        if(!permissionService.checkLoginGlobalAndLocalPermissions(dataObject,GlobalPermissionEnum.USER,PermissionEnum.WRITE)){
+            render status : UNAUTHORIZED
+            return
+        }
+        User user = permissionService.getCurrentUser(dataObject)
+        Feature feature = null
+//        JSONObject originalFeatureJsonObject = null
+
+        List<GoAnnotation> goAnnotationList = []
+        List<GeneProduct> geneProductArrayList = []
+        List<Provenance> provenanceArrayList = []
+
+        JSONArray goArray = dataObject.getJSONArray(FeatureStringEnum.GO_ANNOTATIONS.value)
+        for(JSONObject object in goArray){
+            if(feature==null){
+                feature = Feature.findByUniqueName(object.feature)
+//                originalFeatureJsonObject = featureService.convertFeatureToJSON(feature)
+            }
+            GoAnnotation goAnnotation = new GoAnnotation()
+            goAnnotation.feature = feature
+            goAnnotation.aspect = object.aspect
+            goAnnotation.goRef = object.goTerm
+            goAnnotation.geneProductRelationshipRef = object.geneRelationship
+            goAnnotation.evidenceRef = object.evidenceCode
+            goAnnotation.goRefLabel = object.goTermLabel
+            goAnnotation.evidenceRefLabel = object.evidenceCodeLabel
+            goAnnotation.negate = object.negate ?: false
+            goAnnotation.withOrFromArray = object.withOrFrom
+            goAnnotation.notesArray = object.notes
+            goAnnotation.reference = object.reference
+            goAnnotation.lastUpdated = new Date()
+            goAnnotation.dateCreated = new Date()
+            goAnnotation.addToOwners(user)
+            feature.addToGoAnnotations(goAnnotation)
+            goAnnotation.save(failOnError: true)
+            goAnnotationList.add(goAnnotation)
+        }
+
+        JSONArray geneProductArray = dataObject.getJSONArray(FeatureStringEnum.GENE_PRODUCT.value)
+        for(JSONObject object in geneProductArray){
+            if(feature==null){
+                feature = Feature.findByUniqueName(object.feature)
+//                originalFeatureJsonObject = featureService.convertFeatureToJSON(feature)
+            }
+            GeneProduct geneProduct = new GeneProduct()
+            geneProduct.feature = feature
+            geneProduct.productName = object.productName
+            geneProduct.evidenceRef = object.evidenceCode
+            geneProduct.evidenceRefLabel = object.evidenceCodeLabel
+            geneProduct.alternate = object.alternate ?: false
+            geneProduct.withOrFromArray = object.withOrFrom
+            geneProduct.notesArray = object.notes
+            geneProduct.reference = object.reference
+            geneProduct.lastUpdated = new Date()
+            geneProduct.dateCreated = new Date()
+            geneProduct.addToOwners(user)
+            feature.addToGeneProducts(geneProduct)
+            geneProduct.save(failOnError: true)
+            GeneProductName.findOrSaveByName(geneProduct.productName)
+            geneProductArrayList.add(geneProduct)
+        }
+
+        JSONArray provenanceArray = dataObject.getJSONArray(FeatureStringEnum.PROVENANCE.value)
+        for(JSONObject object in provenanceArray){
+            if(feature==null){
+                feature = Feature.findByUniqueName(object.feature)
+//                originalFeatureJsonObject = featureService.convertFeatureToJSON(feature)
+            }
+            Provenance provenance = new Provenance()
+            provenance.feature = feature
+            provenance.field = object.field
+            provenance.evidenceRef = object.evidenceCode
+            provenance.evidenceRefLabel = object.evidenceCodeLabel
+            provenance.withOrFromArray = object.withOrFrom
+            provenance.notesArray = object.notes
+            provenance.reference = object.reference
+            provenance.lastUpdated = new Date()
+            provenance.dateCreated = new Date()
+            provenance.addToOwners(user)
+            feature.addToProvenances(provenance)
+            provenance.save(failOnError: true)
+            provenanceArrayList.add(provenance)
+        }
+
+        /**
+         * Adds history
+         */
+
+//        JSONArray oldFeaturesJsonArray = new JSONArray()
+//        oldFeaturesJsonArray.add(originalFeatureJsonObject)
+//        JSONArray newFeaturesJsonArray = new JSONArray()
+//        JSONObject currentFeatureJsonObject = featureService.convertFeatureToJSON(feature)
+//        newFeaturesJsonArray.add(currentFeatureJsonObject)
+//        featureEventService.addNewFeatureEvent(FeatureOperation.ADD_BULK_FUNCTIONAL_ANNOTATIONS,
+//                feature.name,
+//                feature.uniqueName,
+//                dataObject,
+//                oldFeaturesJsonArray,
+//                newFeaturesJsonArray,
+//                user)
+
+        if(feature==null){
+            render new JSONObject() as JSON
+            return
+        }
+        render feature as JSON
+    }
+
+
+
     @RestApiMethod(description = "Get annotators report for group", path = "/group/getAnnotatorsReportForGroup", verb = RestApiVerb.POST)
     @RestApiParams(params = [
             @RestApiParam(name = "username", type = "email", paramType = RestApiParamType.QUERY)
@@ -808,4 +1240,19 @@ class AnnotatorController {
         export()
     }
 
+    private static compareNullToBlank(a, b) {
+        if ((a == null && b == "") || (a == "" && b == null)) return true
+        return a == b
+    }
+
+    private FeatureOperation detectFeatureOperation(Feature feature, JSONObject data) {
+        if (!compareNullToBlank(feature.name, data.name)) return FeatureOperation.SET_NAME
+        if (!compareNullToBlank(feature.symbol, data.symbol)) return FeatureOperation.SET_SYMBOL
+        if (!compareNullToBlank(feature.description, data.description)) return FeatureOperation.SET_DESCRIPTION
+        if (!compareNullToBlank(feature.status, data.status)) return FeatureOperation.SET_STATUS
+        if (feature.isObsolete != data.obsolete) return FeatureOperation.SET_OBSOLETE
+
+        log.warn("Updated generic feature")
+        null
+    }
 }
