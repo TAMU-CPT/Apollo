@@ -1,0 +1,11 @@
+.plus-Transmembrane,
+.minus-Transmembrane {
+    background-color: red !important;
+    background-repeat: repeat-x;
+    cursor: pointer;
+}
+
+.black-80pct {
+	background-color: black;
+	height: 80%;
+}
