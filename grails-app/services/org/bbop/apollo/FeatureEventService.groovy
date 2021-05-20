@@ -7,6 +7,7 @@ import org.bbop.apollo.gwt.shared.FeatureStringEnum
 import org.bbop.apollo.history.FeatureOperation
 import org.codehaus.groovy.grails.web.json.JSONArray
 import org.codehaus.groovy.grails.web.json.JSONObject
+import groovy.json.JsonBuilder
 import org.grails.plugins.metrics.groovy.Timed
 
 import java.text.DateFormat
@@ -711,22 +712,6 @@ class FeatureEventService {
         def offset = deepestIndex - futureEvents.size() - previousEvents.size()
         def returnIndex = previousEvents.size() + offset
         return returnIndex
-//        Integer deepestIndex = getDeepestIndex(-1, currentFeatureEvent, featureEventMap)
-    }
-
-    int getDeepestIndex(int index, FeatureEvent currentFeatureEvent, Map<String, Map<Long, FeatureEvent>> featureEventMap) {
-        ++index
-        FeatureEvent featureEvent1 = null
-        FeatureEvent featureEvent2 = null
-        if (currentFeatureEvent.parentId) {
-            featureEvent1 = findFeatureEventFromMap(currentFeatureEvent.parentId, featureEventMap)
-        }
-        if (currentFeatureEvent.parentMergeId) {
-            featureEvent2 = findFeatureEventFromMap(currentFeatureEvent.parentMergeId, featureEventMap)
-        }
-        Integer p1Id = featureEvent1 ? getDeepestIndex(index, featureEvent1, featureEventMap) : index
-        Integer p2Id = featureEvent2 ? getDeepestIndex(index, featureEvent2, featureEventMap) : index
-        return Math.max(p1Id, p2Id)
     }
 
     def undo(JSONObject inputObject, int countBackwards) {
@@ -908,5 +893,30 @@ class FeatureEventService {
             historyContainer.getJSONArray(FeatureStringEnum.FEATURES.value).put(jsonFeature);
         }
         return historyContainer
+    }
+
+    /**
+     * Create Annotator (user) attributions by getting all Feature Events
+     * @param None
+     * @return json of all edits by user
+     */
+    JSONObject generateAttributions(int max = 1000) {
+        List<FeatureEvent> featureEvents = FeatureEvent.listOrderByLastUpdated([order: 'desc', max:max])
+        log.debug("Generating attrubtions: "+ featureEvents.size())
+        def attributions = new HashMap<String,List<FeatureOperation>>()
+        featureEvents.each {
+            log.debug("Generating operation: "+ it.operation)
+            if(attributions.containsKey(it.getEditor()?.username)){
+                List<FeatureOperation> operations = attributions.get(it.getEditor()?.username) as List<FeatureOperation>
+                operations.add(it.operation)
+                attributions.put(it.getEditor()?.username, operations)
+            }else {
+                List<FeatureOperation> operations = []
+                operations.add(it.operation)
+                attributions.put(it.getEditor()?.username, operations)
+            }
+        }
+
+        return new JSONObject(attributions)
     }
 }

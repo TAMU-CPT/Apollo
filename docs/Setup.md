@@ -13,8 +13,10 @@ have sample settings for various database engines.
 
 The server will minimally need to have Java 8 or greater, [Grails](https://grails.org/), [git](https://git-scm.com/),
 [ant](http://ant.apache.org/), a servlet container e.g. [tomcat7+](http://tomcat.apache.org/), jetty, or resin. An
-external database such as PostgreSQL or MySQL is generally used for production, but instructions for the H2 database is
-also provided.
+external database such as PostgreSQL (9 or 10 preferred) is generally used for production, but instructions for MySQL 
+or the H2 Java database (which may also be run embedded) are also provided.
+
+To build the system natively JDK8 is required (typically OpenJDK8).  To run the war, Java 8 or greater should be fine. 
 
 **Important note**:  The default memory for Tomcat and Jetty is insufficient to run Apollo (and most other web apps).   
 You should [increase the memory according to these instructions](Troubleshooting.md#tomcat-memory).
@@ -45,7 +47,9 @@ Node versions 6-12 have been tested and work.   [nvm](https://github.com/creatio
 Build settings for Apollo specifically.  Recent versions of tomcat7 will work, though tomcat 8 and 9 are preferred.  If it does not install automatically there are a number of ways to [build tomcat on linux](https://www.digitalocean.com/community/tutorials/how-to-install-java-with-apt-get-on-ubuntu-16-04):
      
     sudo apt-get install ant openjdk-8-jdk 
-    export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/  # or set in .bashrc / .project
+    export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/  # or set in .bashrc / .profile / .zshrc
+    export JAVA_HOME=`/usr/libexec/java_home -v 1.8` # OR
+
     
 If you need to have multiple versions of java (note [#2222](https://github.com/GMOD/Apollo/issues/2222)), you will need to specify the version for tomcat.  In tomcat8 on Ubuntu you'll need to set the `/etc/default/tomcat8` file JAVA_HOME explicitly:
 

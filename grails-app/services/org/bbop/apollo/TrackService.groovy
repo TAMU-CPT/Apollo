@@ -501,12 +501,39 @@ class TrackService {
      * @return
      */
     @NotTransactional
-    JSONObject findTrackFromArray(JSONArray tracksArray, String trackName) {
+    JSONObject findTrackFromArrayByCategory(JSONArray tracksArray, String category,boolean ignoreCase = true) {
+        return findTrackFromArrayByKey(tracksArray,category,"category",ignoreCase)
+    }
+
+    /**
+     *
+     * @param tracksArray
+     * @param label
+     * @return
+     */
+    @NotTransactional
+    JSONObject findTrackFromArrayByLabel(JSONArray tracksArray, String label,boolean ignoreCase = true) {
+        return findTrackFromArrayByKey(tracksArray,label,"label",ignoreCase)
+    }
+
+    /**
+     *
+     * @param tracksArray
+     * @param keyValue
+     * @paramkey
+     * @return
+     */
+    @NotTransactional
+    JSONObject findTrackFromArrayByKey(JSONArray tracksArray, String keyValue, String key,boolean ignoreCase = true) {
         for (int i = 0; i < tracksArray.size(); i++) {
             JSONObject obj = tracksArray.getJSONObject(i)
-            if (obj.getString("label") == trackName) return obj
+            if(ignoreCase){
+                if (obj.getString(key)?.equalsIgnoreCase(keyValue)) return obj
+            }
+            else{
+                if (obj.getString(key)== keyValue) return obj
+            }
         }
-
         return null
     }
 
@@ -555,23 +582,21 @@ class TrackService {
 
         List<String> typeList = new ArrayList<>()
         types.each { typeList.add(it) }
+        boolean isGene = false
+      // loosely match gene
+        if(typeList.size()==1 && typeList.get(0)==FeatureStringEnum.GENE.value.toLowerCase()) {
+          isGene = true
+        }
         JSONArray rootArray = new JSONArray()
         // here we just clone it
         for (def obj in jsonArray) {
             if (obj instanceof JSONObject) {
-                if (typeList.contains(obj.type)) {
+                if (typeList.contains(obj.type) || (isGene && obj.type.indexOf("_gene")>0)) {
                     for (JSONObject child in getGeneChildren(obj, typeList)) {
                         rootArray.add(child)
                     }
-//                rootArray.add(obj)
                 }
             }
-//            else if (obj instanceof JSONArray) {
-//                rootArray.addAll(flattenArray(obj,types))
-////                for (JSONObject child in obj) {
-////                    rootArray.add(child)
-////                }
-//            }
         }
 
         return rootArray

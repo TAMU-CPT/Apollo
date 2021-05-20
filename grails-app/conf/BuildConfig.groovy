@@ -15,10 +15,10 @@ grails.project.fork = [
         // configure settings for compilation JVM, note that if you alter the Groovy version forked compilation is required
         //  compile: [maxMemory: 256, minMemory: 64, debug: false, maxPerm: 256, daemon:true],
 
-        test   : false,
+//        test   : false,
         //run    : false,
         // configure settings for the test-app JVM, uses the daemon by default
-        //test: [maxMemory: 2048, minMemory: 64, debug: false, maxPerm: 1024, daemon:true],
+        test: [maxMemory: 2048, minMemory: 64, debug: false, maxPerm: 1024, daemon:true],
         // configure settings for the run-app JVM
         run    : [maxMemory: 2048, minMemory: 64, debug: false, maxPerm: 1024, forkReserve: false],
         // configure settings for the run-war JVM
@@ -73,9 +73,11 @@ grails.project.dependency.resolution = {
 //        runtime group: 'org.postgresql', name: 'postgresql', version: '42.2.6'
         compile 'commons-codec:commons-codec:1.2'
         compile 'commons-collections:commons-collections:3.2.1'
+        compile group: 'commons-io', name: 'commons-io', version: '2.7'
+
 
         // HTSJDK
-        compile group: 'com.github.samtools', name: 'htsjdk', version: '2.20.3'
+        compile group: 'com.github.samtools', name: 'htsjdk', version: '2.23.0'
 
         // svg generation
         compile group: 'org.apache.xmlgraphics', name: 'batik-svg-dom', version: '1.9'
@@ -142,6 +144,8 @@ grails.project.dependency.resolution = {
         runtime ":database-migration:1.4.1"
         runtime ":jquery-ui:1.10.4"
         runtime ":jquery:1.11.1"
+        runtime "org.grails.plugins:cors:1.1.8"
+
 
         // https://github.com/groovydev/twitter-bootstrap-grails-plugin/blob/master/README.md
         runtime ':twitter-bootstrap:3.3.5'

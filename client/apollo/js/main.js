@@ -111,7 +111,7 @@ return declare( [JBPlugin, HelpMixin],
         } );
 
         if (! browser.config.helpUrl)  {
-            browser.config.helpUrl = "http://genomearchitect.org/webapollo/docs/help.html";
+            browser.config.helpUrl = "https://genomearchitect.readthedocs.io/";
         }
 
         // hand the browser object to the feature edge match manager
@@ -192,7 +192,7 @@ return declare( [JBPlugin, HelpMixin],
             if (browser.poweredByLink)  {
                 dojo.disconnect(browser.poweredBy_clickHandle);
                 browser.poweredByLink.innerHTML = '<img src=\"plugins/WebApollo/img/ApolloLogo_100x36.png\" height=\"25\" />';
-                browser.poweredByLink.href = 'http://genomearchitect.org/';
+                browser.poweredByLink.href = 'https://genomearchitect.readthedocs.io//';
                 browser.poweredByLink.target = "_blank";
             }
             if(browser.config.show_nav&&browser.config.show_menu) {
@@ -717,9 +717,9 @@ return declare( [JBPlugin, HelpMixin],
         new dijitMenuItem(
           {
             id: 'about_apollo',
-            label: 'About',
+            label: 'About Apollo',
             onClick: function() {
-              window.open("../about.jsp",'help_window').focus();
+              window.open("../about",'help_window').focus();
             }
         })
       );
@@ -733,6 +733,15 @@ return declare( [JBPlugin, HelpMixin],
             }
           })
       );
+        browser.addGlobalMenuItem( 'help',
+            new dijitMenuItem(
+                {
+                    id: 'request_feature_report_bug',
+                    label: 'Request feature / report bug',
+                    // iconClass: 'jbrowseIconHelp',
+                    onClick: function()  { window.open("https://github.com/gmod/apollo/issues/new",'_blank').focus(); }
+                })
+        );
 
       browser.addGlobalMenuItem( 'help',
         new dijitMenuItem(

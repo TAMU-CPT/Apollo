@@ -65,7 +65,10 @@ environments {
 //    gff3.source = "MyOrg" // also for GPAD export
 //    only_owners_delete = true
 //    common_data_directory = "/opt/temporary/apollo"
+//    calculate_non_canonical_splice_sites = false
 //    store_orig_id = false
+//    add_merged_comment = true
+//    count_annotations = false
 //    fa_to_twobit_exe = "/usr/local/bin/blat" // get form https://genome.ucsc.edu/goldenPath/help/blatSpec.html
 //    sequence_search_tools {
 //        blat_nuc {
@@ -84,18 +87,10 @@ environments {
 //    }
 //    extraTabs = [
 //            ['title': 'extra1', 'url': 'http://localhost:8080/apollo/annotator/report/'],
-//            ['title': 'extra2', 'content': '<b>Apollo</b> documentation <a href="http://genomearchitect.org" target="_blank">linked here</a>']
+//            ['title': 'extra2', 'content': '<b>Apollo</b> documentation <a href="https://genomearchitect.readthedocs.io/" target="_blank">linked here</a>']
+//            ['title': 'GGA', 'url': 'https://gitter.im/galaxy-genome-annotation/Lobby/~embed']
+//            ['title': 'JBrowse', 'url': 'https://gitter.im/GMOD/jbrowse/~embed']
 //    ]
-//
-////    extraTabs = [
-////        tab1: [
-////            title : 'extra1',
-////            url : 'http://localhost:8080/apollo/annotator/report/'
-////        ],
-////        tab2: ['title': 'extra2',
-////               'content': '<b>Some content</b><a href="http://google.com" target="_blank">Google</a>'
-////        ]
-////    ]
 //}
 
 // Uncomment to change the default memory configurations
@@ -114,7 +109,7 @@ environments {
 //jbrowse {
 //    git {
 //        url= "https://github.com/GMOD/jbrowse"
-//        tag = "1.16.5-release"
+//        tag = "1.16.11-release"
 ////        branch = "dev"
 ////        hash = "09b71099bf73c50d37a0e911baf06b4975e3f6ca"
 //        alwaysPull = true
