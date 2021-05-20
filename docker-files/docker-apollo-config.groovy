@@ -114,6 +114,7 @@ apollo {
 
     fa_to_twobit_exe = "/usr/local/bin/faToTwoBit" // automatically loaded // https://genome.ucsc.edu/goldenPath/help/blatSpec.html
 
+    calculate_non_canonical_splice_sites = false
     // TODO: should come from config or via preferences database
     splice_donor_sites = System.getenv("WEBAPOLLO_SPLICE_DONOR_SITES") ? System.getenv("WEBAPOLLO_SPLICE_DONOR_SITES").split(",") : ["GT"]
     splice_acceptor_sites = System.getenv("WEBAPOLLO_SPLICE_ACCEPTOR_SITES") ? System.getenv("WEBAPOLLO_SPLICE_ACCEPTOR_SITES").split(",") : ["AG"]
@@ -153,12 +154,12 @@ jbrowse {
             alwaysRecheck = "true"
             alwaysPull = "true"
         }
-        ColorByCDS{
-            git = 'https://github.com/scottcain/colorbycds.git'
-            branch = 'master'
-            alwaysRecheck = "true"
-            alwaysPull = "true"
-        }
+//        ColorByCDS{
+//            git = 'https://github.com/scottcain/colorbycds.git'
+//            branch = 'master'
+//            alwaysRecheck = "true"
+//            alwaysPull = "true"
+//        }
         MAFViewer{
             git = 'https://github.com/cmdcolin/mafviewer.git'
             branch = 'master'
@@ -171,6 +172,18 @@ jbrowse {
             alwaysRecheck = "true"
             alwaysPull = "true"
         }
+        GCContent {
+            git = 'https://github.com/elsiklab/gccontent.git'
+            branch = 'master'
+            alwaysRecheck = "true"
+            alwaysPull = "true"
+        }
+        BlastView {
+            git = 'https://github.com/TAMU-CPT/blastview.git'
+            branch = 'master'
+            alwaysRecheck = "true"
+            alwaysPull = "true"
+        } 
 //        WormbaseGlyphs{
 //            git = 'https://github.com/nathandunn/WormbaseGlyphs.git'
 //            branch = 'master'
