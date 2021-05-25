@@ -27,7 +27,7 @@ jobs:
           echo "Sleeping here while Apollo builds"
           sleep 240
           echo "Done sleeping, I hope it is working"
-          curl -i 'http://localhost:8080/apollo/annotator/system'
+          curl -i 'http://localhost:9999/apollo/annotator/system'
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v1
         with:
