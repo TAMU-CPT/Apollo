@@ -50,14 +50,14 @@ jobs:
           sleep 60
           ps -ef | grep java
           netstat -tan | grep LISTEN
-          curl http://localhost:8080/apollo/annotator/system || true
+          curl http://localhost:9999/apollo/annotator/system || true
           sleep 60
-          curl http://localhost:8080/annotator/system
-          curl -s 'http://localhost:8080/apollo/WebServices' > /dev/null
+          curl http://localhost:9999/annotator/system
+          curl -s 'http://localhost:9999/apollo/WebServices' > /dev/null
       - name: Test
         run: |
           cd apollo-gmod-js
-          export APOLLO_URL="http://localhost:8080/apollo"
+          export APOLLO_URL="http://localhost:9999/apollo"
           yarn test:nowatch
       - uses: actions/cache@v2
         with:
